@@ -23,6 +23,7 @@ library
   hs-source-dirs:   lib
   ghc-options:
       -Wall
-  -- exposed-modules:
+  exposed-modules:
+      Crypto.Secp256k1
   build-depends:
       base
