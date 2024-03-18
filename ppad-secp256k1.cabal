@@ -27,3 +27,5 @@ library
       Crypto.Secp256k1
   build-depends:
       base
+    , base16-bytestring
+    , bytestring

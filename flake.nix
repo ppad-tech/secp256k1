@@ -31,6 +31,7 @@
 
           devShells.default = hpkgs.shellFor {
             packages = p: [
+              p.${lib}
             ];
 
             buildInputs = [
