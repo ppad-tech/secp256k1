@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Crypto.Secp256k1 where
@@ -9,6 +11,7 @@ import qualified Data.Bits as B (shiftL, shiftR)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import Data.STRef
+import GHC.Generics
 
 -- XX could stand some reorganization; lots of stuff 'baked in', e.g. in mods
 --
@@ -52,6 +55,7 @@ ge :: Integral a => a -> Bool
 ge n = 0 < n && n < (curve_n secp256k1)
 
 data Triple a = Triple !a !a !a
+  deriving stock Generic
 
 -- for a, b, return x, y, g such that ax + by = g for g = gcd(a, b)
 egcd :: Integral a => a -> a -> Triple a
@@ -88,7 +92,7 @@ data Curve a = Curve {
   , curve_gx :: a -- ^ base point x
   , curve_gy :: a -- ^ base point y
   }
-  deriving Show
+  deriving stock (Show, Generic)
 
 secp256k1 :: Integral a => Curve a
 secp256k1 = Curve p n 0 7 gx gy where
@@ -133,7 +137,7 @@ _GROUP_BYTELENGTH = 32
 -- curve point
 
 data Affine a = Affine !a !a
-  deriving Show
+  deriving stock (Show, Generic)
 
 -- XX rename Projective?
 data Projective a = Projective {
@@ -141,7 +145,7 @@ data Projective a = Projective {
   , py :: !a
   , pz :: !a
   }
-  deriving Show
+  deriving stock (Show, Generic)
 
 instance Integral a => Eq (Projective a) where
   Projective ax ay az == Projective bx by bz =
