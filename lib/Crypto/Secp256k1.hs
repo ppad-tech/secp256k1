@@ -15,13 +15,16 @@ import Data.STRef
 -- XX seems Point should have a reference to the curve it's on; probably a lazy
 --    one. otherwise hard to implement Eq.
 --
--- XX then again, we're exclusively concerned with a single curve here, so
+--    then again, we're exclusively concerned with a single curve here, so
 --    who cares. bake everything in.
 --
 --    only counterargument is that we may want to reuse the same skeleton for
 --    other libraries after the fact. so we have a single library implementing
 --    modular arithmetic, curves, etc., and then implement other stuff on top
 --    of that
+--
+--    i think i like the idea of abstracting quickly and baking types and utils
+--    and such into an internal library, e.g. secp256k1-sys; later extract that
 
 -- modular arithmetic utilities
 
@@ -78,12 +81,12 @@ modinv' a m = case modinv a m of
 -- elliptic curve
 
 data Curve a = Curve {
-    curve_p  :: !a -- ^ field prime
-  , curve_n  :: !a -- ^ group order
-  , curve_a  :: !a -- ^ /a/ coefficient, weierstrass form
-  , curve_b  :: !a -- ^ /b/ coefficient, weierstrass form
-  , curve_gx :: !a -- ^ base point x
-  , curve_gy :: !a -- ^ base point y
+    curve_p  :: a -- ^ field prime
+  , curve_n  :: a -- ^ group order
+  , curve_a  :: a -- ^ /a/ coefficient, weierstrass form
+  , curve_b  :: a -- ^ /b/ coefficient, weierstrass form
+  , curve_gx :: a -- ^ base point x
+  , curve_gy :: a -- ^ base point y
   }
   deriving Show
 
@@ -95,6 +98,7 @@ secp256k1 = Curve p n 0 7 gx gy where
   gx   = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
   gy   = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
 
+-- XX not general weierstrass; only for j-invariant 0 (i.e. a == 0)
 weierstrass :: Integral a => a -> a
 weierstrass x = mods (mods (x * x) * x + curve_b secp256k1)
 
@@ -131,32 +135,36 @@ _GROUP_BYTELENGTH = 32
 data Affine a = Affine !a !a
   deriving Show
 
-data Point a = Point {
+-- XX rename Projective?
+data Projective a = Projective {
     px :: !a
   , py :: !a
   , pz :: !a
   }
   deriving Show
 
-instance Integral a => Eq (Point a) where
-  Point ax ay az == Point bx by bz =
+instance Integral a => Eq (Projective a) where
+  Projective ax ay az == Projective bx by bz =
     let x1z2 = mods (ax * bz)
         x2z1 = mods (bx * az)
         y1z2 = mods (ay * bz)
         y2z1 = mods (by * az)
     in  x1z2 == x2z1 && y1z2 == y2z1
 
-_ZERO :: Integral a => Point a
-_ZERO = Point 0 1 0
+_ZERO :: Integral a => Projective a
+_ZERO = Projective 0 1 0
 
-_BASE :: Integral a => Point a
-_BASE = Point (curve_gx secp256k1) (curve_gy secp256k1) 1
+_BASE :: Integral a => Projective a
+_BASE = Projective (curve_gx secp256k1) (curve_gy secp256k1) 1
 
-neg :: (Integral a, Num a) => Point a -> Point a
-neg (Point x y z) = Point x (mods (negate y)) z
+-- negate point
+neg :: (Integral a, Num a) => Projective a -> Projective a
+neg (Projective x y z) = Projective x (mods (negate y)) z
 
-add :: (Integral a, Num a) => Point a -> Point a -> Point a
-add (Point x1 y1 z1) (Point x2 y2 z2) = runST $ do
+-- algo 1, "complete addition formulas for prime order elliptic curves,"
+-- renes et al, 2015
+add :: (Integral a, Num a) => Projective a -> Projective a -> Projective a
+add (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
   let a = curve_a secp256k1
       b = curve_b secp256k1
   x3 <- newSTRef 0
@@ -239,14 +247,87 @@ add (Point x1 y1 z1) (Point x2 y2 z2) = runST $ do
     modifySTRef' z3 (\rz3 -> mods (r5 * rz3))
   readSTRef t0 >>= \r0 ->
     modifySTRef' z3 (\rz3 -> mods (rz3 + r0))
-  Point <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+  Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
-double :: (Integral a, Num a) => Point a -> Point a
+-- algo 7, "complete addition formulas for prime order elliptic curves,"
+-- renes et al, 2015
+add' :: (Integral a, Num a) => Projective a -> Projective a -> Projective a
+add' (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
+  let b = curve_b secp256k1
+  x3 <- newSTRef 0
+  y3 <- newSTRef 0
+  z3 <- newSTRef 0
+  let b3 = mods (b * 3)
+  t0 <- newSTRef (mods (x1 * x2)) -- 1
+  t1 <- newSTRef (mods (y1 * y2))
+  t2 <- newSTRef (mods (z2 * z2))
+  t3 <- newSTRef (mods (x1 + y1)) -- 4
+  t4 <- newSTRef (mods (x2 + y2))
+  readSTRef t4 >>= \r4 ->
+    modifySTRef' t3 (\r3 -> mods (r3 * r4))
+  readSTRef t0 >>= \r0 ->
+    readSTRef t1 >>= \r1 ->
+    writeSTRef t4 (mods (r0 + r1))
+  readSTRef t4 >>= \r4 ->
+    modifySTRef' t3 (\r3 -> mods (r3 - r4)) -- 8
+  writeSTRef t4 (mods (y1 + z1))
+  writeSTRef x3 (mods (y2 + z2))
+  readSTRef x3 >>= \rx3 ->
+    modifySTRef' t4 (\r4 -> mods (r4 * rx3))
+  readSTRef t1 >>= \r1 ->
+    readSTRef t2 >>= \r2 ->
+    writeSTRef x3 (mods (r1 + r2)) -- 12
+  readSTRef x3 >>= \rx3 ->
+    modifySTRef' t4 (\r4 -> mods (r4 - rx3))
+  writeSTRef x3 (mods (x1 + z1))
+  writeSTRef y3 (mods (x2 + z2))
+  readSTRef y3 >>= \ry3 ->
+    modifySTRef' x3 (\rx3 -> mods (rx3 * ry3)) -- 16
+  readSTRef t0 >>= \r0 ->
+    readSTRef t2 >>= \r2 ->
+    writeSTRef y3 (mods (r0 + r2))
+  readSTRef x3 >>= \rx3 ->
+    modifySTRef' y3 (\ry3 -> mods (rx3 - ry3))
+  readSTRef t0 >>= \r0 ->
+    writeSTRef x3 (mods (r0 + r0))
+  readSTRef x3 >>= \rx3 ->
+    modifySTRef t0 (\r0 -> mods (rx3 + r0)) -- 20
+  modifySTRef' t2 (\r2 -> mods (b3 * r2))
+  readSTRef t1 >>= \r1 ->
+    readSTRef t2 >>= \r2 ->
+    writeSTRef z3 (mods (r1 + r2))
+  readSTRef t2 >>= \r2 ->
+    modifySTRef' t1 (\r1 -> mods (r1 - r2))
+  modifySTRef' y3 (\ry3 -> mods (b3 * ry3)) -- 24
+  readSTRef t4 >>= \r4 ->
+    readSTRef y3 >>= \ry3 ->
+    writeSTRef x3 (mods (r4 * ry3))
+  readSTRef t3 >>= \r3 ->
+    readSTRef t1 >>= \r1 ->
+    writeSTRef t2 (mods (r3 * r1))
+  readSTRef t2 >>= \r2 ->
+    modifySTRef' x3 (\rx3 -> mods (r2 - rx3))
+  readSTRef t0 >>= \r0 ->
+    modifySTRef' y3 (\ry3 -> mods (ry3 * r0)) -- 28
+  readSTRef z3 >>= \rz3 ->
+    modifySTRef' t1 (\r1 -> mods (r1 * rz3))
+  readSTRef t1 >>= \r1 ->
+    modifySTRef' y3 (\ry3 -> mods (r1 + ry3))
+  readSTRef t3 >>= \r3 ->
+    modifySTRef' t0 (\r0 -> mods (r0 * r3))
+  readSTRef t4 >>= \r4 ->
+    modifySTRef' z3 (\rz3 -> mods (rz3 * r4)) -- 32
+  readSTRef t0 >>= \r0 ->
+    modifySTRef' z3 (\rz3 -> mods (rz3 + r0))
+  Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+
+-- double a point
+double :: (Integral a, Num a) => Projective a -> Projective a
 double p = add p p
 
 -- to affine coordinates
-affine :: Integral a => Point a -> Maybe (Affine a)
-affine p@(Point x y z)
+affine :: Integral a => Projective a -> Maybe (Affine a)
+affine p@(Projective x y z)
   | p == _ZERO = pure (Affine 0 0)
   | z == 1     = pure (Affine x y)
   | otherwise  = do
@@ -256,7 +337,7 @@ affine p@(Point x y z)
       else pure (Affine (mods (x * iz)) (mods (y * iz)))
 
 -- point is valid
-valid :: Integral a => Point a -> Bool
+valid :: Integral a => Projective a -> Bool
 valid p = case affine p of
   Nothing -> False
   Just (Affine x y)
@@ -264,7 +345,8 @@ valid p = case affine p of
     | mods (y * y) /= weierstrass x -> False
     | otherwise -> True
 
-parse_point :: (Bits a, Integral a) => BS.ByteString -> Maybe (Point a)
+-- parse hex-encoded
+parse_point :: (Bits a, Integral a) => BS.ByteString -> Maybe (Projective a)
 parse_point (B16.decode -> ebs) = case ebs of
   Left _   -> Nothing
   Right bs -> case BS.uncons bs of
@@ -281,11 +363,11 @@ parse_point (B16.decode -> ebs) = case ebs of
                      hodd = h .&. 1 == 1
                  pure $
                    if   hodd /= yodd
-                   then Point x (mods (negate y)) 1
-                   else Point x y 1
+                   then Projective x (mods (negate y)) 1
+                   else Projective x y 1
           else if   len == 65 && h == 0x04 -- uncompressed
                then let (roll -> y, _) = BS.splitAt _GROUP_BYTELENGTH etc
-                        p = Point x y 1
+                        p = Projective x y 1
                     in  if   valid p
                         then Just p
                         else Nothing

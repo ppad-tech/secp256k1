@@ -31,7 +31,7 @@
 
           devShells.default = hpkgs.shellFor {
             packages = p: [
-              p.${lib}
+              (hlib.doBenchmark p.${lib})
             ];
 
             buildInputs = [
@@ -40,6 +40,8 @@
             ];
 
             inputsFrom = builtins.attrValues self.packages.${system};
+
+            doBenchmark = true;
 
             shellHook = ''
               PS1="[${lib}] \w$ "
