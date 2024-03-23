@@ -139,7 +139,10 @@ _GROUP_BYTELENGTH = 32
 data Affine a = Affine !a !a
   deriving stock (Show, Generic)
 
--- XX rename Projective?
+instance Integral a => Eq (Affine a) where
+  Affine x1 y1 == Affine x2 y2 =
+    mods x1 == mods x2 && mods y1 == mods y2
+
 data Projective a = Projective {
     px :: !a
   , py :: !a
@@ -165,6 +168,28 @@ _BASE = Projective (curve_gx secp256k1) (curve_gy secp256k1) 1
 neg :: (Integral a, Num a) => Projective a -> Projective a
 neg (Projective x y z) = Projective x (mods (negate y)) z
 
+-- XX correct?
+add_affine :: (Integral a, Num a) => Affine a -> Affine a -> Maybe (Affine a)
+add_affine p@(Affine x1 y1) q@(Affine x2 y2)
+    | p == q && (p == azero || q == azero) = pure azero
+    | p == q = do
+        i <- modinv (mods (2 * y1)) (curve_p secp256k1)
+        let s = mods (mods (3 * mods (x1 * x1)) * i)
+            x = mods (mods (s * s) - mods (2 * x1))
+            y = mods (mods (s * mods (x1 - x)) - y1)
+        pure (Affine x y)
+    | x1 == 0 && y1 == 0 = pure q
+    | x2 == 0 && y2 == 0 = pure p
+    | x1 == x2 = pure azero
+    | otherwise = do
+        i <- modinv (mods (x1 - x2)) (curve_p secp256k1)
+        let s = mods (mods (y1 - y2) * i)
+            x3 = mods (mods (s * s) - x1 - x2)
+            y3 = mods (mods (s * mods (x1 - x3)) - y1)
+        pure (Affine x3 y3)
+  where
+    azero = Affine 0 0
+
 -- algo 1, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
 add :: (Integral a, Num a) => Projective a -> Projective a -> Projective a
@@ -177,7 +202,7 @@ add (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
   let b3 = mods (b * 3)
   t0 <- newSTRef (mods (x1 * x2))
   t1 <- newSTRef (mods (y1 * y2))
-  t2 <- newSTRef (mods (z2 * z2))
+  t2 <- newSTRef (mods (z1 * z2))
   t3 <- newSTRef (mods (x1 + y1))
   t4 <- newSTRef (mods (x2 + y2))
   readSTRef t4 >>= \r4 ->
@@ -253,6 +278,53 @@ add (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
     modifySTRef' z3 (\rz3 -> mods (rz3 + r0))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
+add_pure :: (Integral a, Num a) => Projective a -> Projective a -> Projective a
+add_pure (Projective x1 y1 z1) (Projective x2 y2 z2) =
+  let a = curve_a secp256k1
+      b = curve_b secp256k1
+      b3 = mods (b * 3)
+      t0 = mods (x1 * x2)
+      t1 = mods (y1 * y2)
+      t2 = mods (z1 * z2)
+      t3 = mods (x1 + y1)
+      t4 = mods (x2 + y2)
+      t30 = mods (t3 * t4)
+      t40 = mods (t0 + t1)
+      t300 = mods (t30 - t40)
+      t400 = mods (x1 + z1)
+      t5 = mods (x2 + z2)
+      t4000 = mods (t400 * t5)
+      t50 = mods (t0 + t2)
+      t40000 = mods (t4000 - t50)
+      t500 = mods (y1 + z1)
+      x3 = mods (y2 + z2)
+      t5000 = mods (t500 * x3)
+      x30 = mods (t1 + t2)
+      t50000 = mods (t5000 - x30)
+      z3 = mods (a * t40000)
+      x300 = mods (b3 * t2)
+      z30 = mods (x300 + z3)
+      x3000 = mods (t1 - z30)
+      z300 = mods (t1 + z30)
+      y3 = mods (x3000 * z300)
+      t10 = mods (t0 + t0)
+      t100 = mods (t10 + t0)
+      t20 = mods (a * t2)
+      t400000 = mods (b3 * t40000)
+      t1000 = mods (t100 + t20)
+      t200 = mods (t0 - t20)
+      t2000 = mods (a * t200)
+      t4000000 = mods (t400000 + t2000)
+      t00 = mods (t1000 * t4000000)
+      y30 = mods (y3 + t00)
+      t000 = mods (t50000 * t4000000)
+      x30000 = mods (t300 * x3000)
+      x300000 = mods (x30000 - t000)
+      t0000 = mods (t300 * t1000)
+      z3000 = mods (t50000 * z300)
+      z30000 = mods (z3000 + t0000)
+  in  Projective x300000 y30 z30000
+
 -- algo 7, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
 add' :: (Integral a, Num a) => Projective a -> Projective a -> Projective a
@@ -264,7 +336,7 @@ add' (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
   let b3 = mods (b * 3)
   t0 <- newSTRef (mods (x1 * x2)) -- 1
   t1 <- newSTRef (mods (y1 * y2))
-  t2 <- newSTRef (mods (z2 * z2))
+  t2 <- newSTRef (mods (z1 * z2))
   t3 <- newSTRef (mods (x1 + y1)) -- 4
   t4 <- newSTRef (mods (x2 + y2))
   readSTRef t4 >>= \r4 ->
@@ -339,6 +411,18 @@ affine p@(Projective x y z)
       if   mods (z * iz) /= 1
       then Nothing
       else pure (Affine (mods (x * iz)) (mods (y * iz)))
+
+-- partial affine
+affine' :: Integral a => Projective a -> Affine a
+affine' p = case affine p of
+  Nothing -> error "bang"
+  Just x  -> x
+
+-- to projective coordinates
+projective :: Integral a => Affine a -> Projective a
+projective (Affine x y)
+  | x == 0 && y == 0 = _ZERO
+  | otherwise = Projective x y 1
 
 -- point is valid
 valid :: Integral a => Projective a -> Bool
