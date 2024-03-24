@@ -10,7 +10,6 @@ import qualified Crypto.Secp256k1 as S
 
 instance NFData S.Projective
 instance NFData S.Affine
-instance NFData S.Curve
 
 main :: IO ()
 main = defaultMain [
@@ -32,6 +31,12 @@ secp256k1 = bgroup "secp256k1" [
       , bench "bar baz" $ nf (S.add bar) baz
       , bench "bar qux" $ nf (S.add bar) qux
       , bench "baz qux" $ nf (S.add baz) qux
+      ]
+    , bgroup "double" [
+        bench "foo" $ nf S.double foo
+      , bench "bar" $ nf S.double bar
+      , bench "baz" $ nf S.double baz
+      , bench "qux" $ nf S.double qux
       ]
     ]
   where

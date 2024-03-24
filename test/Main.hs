@@ -14,6 +14,7 @@ units :: TestTree
 units = testGroup "unit tests" [
     parse_tests
   , add_tests
+  , dub_tests
   ]
 
 parse_tests :: TestTree
@@ -44,7 +45,7 @@ parse_test_r = testCase (render r_hex) $ case parse r_hex of
 
 -- XX also make less dumb
 add_tests :: TestTree
-add_tests = testGroup "ec addition, algo 1" [
+add_tests = testGroup "ec addition" [
     add_test_pq
   , add_test_pr
   , add_test_qr
@@ -61,6 +62,25 @@ add_test_pr = testCase "p + r" $
 add_test_qr :: TestTree
 add_test_qr = testCase "q + r" $
   assertEqual mempty qr_pro (q_pro `add` r_pro)
+
+dub_tests :: TestTree
+dub_tests = testGroup "ec doubling" [
+    dub_test_p
+  , dub_test_q
+  , dub_test_r
+  ]
+
+dub_test_p :: TestTree
+dub_test_p = testCase "2p" $
+  assertEqual mempty (p_pro `add` p_pro) (double p_pro)
+
+dub_test_q :: TestTree
+dub_test_q = testCase "2q" $
+  assertEqual mempty (q_pro `add` q_pro) (double q_pro)
+
+dub_test_r :: TestTree
+dub_test_r = testCase "2r" $
+  assertEqual mempty (r_pro `add` r_pro) (double r_pro)
 
 p_hex :: BS.ByteString
 p_hex = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
