@@ -41,6 +41,7 @@ test-suite secp256k1-tests
 
   build-depends:
       base
+    , base16-bytestring
     , bytestring
     , ppad-secp256k1
     , tasty
