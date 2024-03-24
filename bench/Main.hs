@@ -12,8 +12,13 @@ instance NFData S.Projective
 instance NFData S.Affine
 instance NFData S.Curve
 
-add :: Benchmark
-add = bgroup "secp256k1" [
+main :: IO ()
+main = defaultMain [
+    secp256k1
+  ]
+
+secp256k1 :: Benchmark
+secp256k1 = bgroup "secp256k1" [
       bgroup "parse" [
         bench "foo" $ nf bparse p
       , bench "bar" $ nf bparse q
@@ -27,30 +32,6 @@ add = bgroup "secp256k1" [
       , bench "bar baz" $ nf (S.add bar) baz
       , bench "bar qux" $ nf (S.add bar) qux
       , bench "baz qux" $ nf (S.add baz) qux
-      ]
-    , bgroup "add'" [
-        bench "foo bar" $ nf (S.add' foo) bar
-      , bench "foo baz" $ nf (S.add' foo) baz
-      , bench "foo qux" $ nf (S.add' foo) qux
-      , bench "bar baz" $ nf (S.add' bar) baz
-      , bench "bar qux" $ nf (S.add' bar) qux
-      , bench "baz qux" $ nf (S.add' baz) qux
-      ]
-    , bgroup "add_pure" [
-        bench "foo bar" $ nf (S.add_pure foo) bar
-      , bench "foo baz" $ nf (S.add_pure foo) baz
-      , bench "foo qux" $ nf (S.add_pure foo) qux
-      , bench "bar baz" $ nf (S.add_pure bar) baz
-      , bench "bar qux" $ nf (S.add_pure bar) qux
-      , bench "baz qux" $ nf (S.add_pure baz) qux
-      ]
-    , bgroup "add_affine" [
-        bench "foo bar" $ nf (S.add_affine afoo) abar
-      , bench "foo baz" $ nf (S.add_affine afoo) abaz
-      , bench "foo qux" $ nf (S.add_affine afoo) aqux
-      , bench "bar baz" $ nf (S.add_affine abar) abaz
-      , bench "bar qux" $ nf (S.add_affine abar) aqux
-      , bench "baz qux" $ nf (S.add_affine abaz) aqux
       ]
     ]
   where
@@ -84,15 +65,3 @@ add = bgroup "secp256k1" [
       Nothing -> error "bang"
       Just !pa -> pa
 
-    afoo = S.affine' foo
-
-    abar = S.affine' bar
-
-    abaz = S.affine' baz
-
-    aqux = S.affine' qux
-
-main :: IO ()
-main = defaultMain [
-    add
-  ]

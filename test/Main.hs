@@ -14,8 +14,6 @@ units :: TestTree
 units = testGroup "unit tests" [
     parse_tests
   , add_tests
-  , add_pure_tests
-  , add'_tests
   ]
 
 parse_tests :: TestTree
@@ -52,20 +50,6 @@ add_tests = testGroup "ec addition, algo 1" [
   , add_test_qr
   ]
 
-add'_tests :: TestTree
-add'_tests = testGroup "ec addition, algo 7" [
-    add'_test_pq
-  , add'_test_pr
-  , add'_test_qr
-  ]
-
-add_pure_tests :: TestTree
-add_pure_tests = testGroup "ec addition, algo 1, pure" [
-    add_pure_test_pq
-  , add_pure_test_pr
-  , add_pure_test_qr
-  ]
-
 add_test_pq :: TestTree
 add_test_pq = testCase "p + q" $
   assertEqual mempty pq_pro (p_pro `add` q_pro)
@@ -77,30 +61,6 @@ add_test_pr = testCase "p + r" $
 add_test_qr :: TestTree
 add_test_qr = testCase "q + r" $
   assertEqual mempty qr_pro (q_pro `add` r_pro)
-
-add'_test_pq :: TestTree
-add'_test_pq = testCase "p + q" $
-  assertEqual mempty pq_pro (p_pro `add'` q_pro)
-
-add'_test_pr :: TestTree
-add'_test_pr = testCase "p + r" $
-  assertEqual mempty pr_pro (p_pro `add'` r_pro)
-
-add'_test_qr :: TestTree
-add'_test_qr = testCase "q + r" $
-  assertEqual mempty qr_pro (q_pro `add'` r_pro)
-
-add_pure_test_pq :: TestTree
-add_pure_test_pq = testCase "p + q" $
-  assertEqual mempty pq_pro (p_pro `add_pure` q_pro)
-
-add_pure_test_pr :: TestTree
-add_pure_test_pr = testCase "p + r" $
-  assertEqual mempty pr_pro (p_pro `add_pure` r_pro)
-
-add_pure_test_qr :: TestTree
-add_pure_test_qr = testCase "q + r" $
-  assertEqual mempty qr_pro (q_pro `add_pure` r_pro)
 
 p_hex :: BS.ByteString
 p_hex = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
