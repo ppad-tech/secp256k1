@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -49,7 +50,7 @@ data Affine = Affine Integer Integer
 
 instance Eq Affine where
   Affine x1 y1 == Affine x2 y2 =
-    mod x1 == mod x2 && mod y1 == mod y2
+    modP x1 == modP x2 && modP y1 == modP y2
 
 -- point in projective coordinates
 data Projective = Projective {
@@ -61,10 +62,10 @@ data Projective = Projective {
 
 instance Eq Projective where
   Projective ax ay az == Projective bx by bz =
-    let x1z2 = mod (ax * bz)
-        x2z1 = mod (bx * az)
-        y1z2 = mod (ay * bz)
-        y2z1 = mod (by * az)
+    let x1z2 = modP (ax * bz)
+        x2z1 = modP (bx * az)
+        y1z2 = modP (ay * bz)
+        y2z1 = modP (by * az)
     in  x1z2 == x2z1 && y1z2 == y2z1
 
 -- secp256k1 base point
@@ -80,8 +81,8 @@ _ZERO :: Projective
 _ZERO = Projective 0 1 0
 
 -- | Division modulo secp256k1 field prime.
-mod :: Integer -> Integer
-mod a = I.integerMod a _CURVE_P
+modP :: Integer -> Integer
+modP a = I.integerMod a _CURVE_P
 
 -- | Is field element.
 fe :: Integer -> Bool
@@ -106,7 +107,7 @@ modsqrt n = runST $ do
     loop r num e
     rr  <- readSTRef r
     pure $
-      if   mod (rr * rr) == n
+      if   modP (rr * rr) == n
       then Just rr
       else Nothing
   where
@@ -122,11 +123,11 @@ modsqrt n = runST $ do
 
 -- prime order j-invariant 0 (i.e. a == 0)
 weierstrass :: Integer -> Integer
-weierstrass x = mod (mod (x * x) * x + _CURVE_B)
+weierstrass x = modP (modP (x * x) * x + _CURVE_B)
 
 -- negate point
 neg :: Projective -> Projective
-neg (Projective x y z) = Projective x (mod (negate y)) z
+neg (Projective x y z) = Projective x (modP (negate y)) z
 
 -- general ec addition
 add :: Projective -> Projective -> Projective
@@ -142,68 +143,68 @@ add_proj (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
   x3 <- newSTRef 0
   y3 <- newSTRef 0
   z3 <- newSTRef 0
-  let b3 = mod (_CURVE_B * 3)
-  t0 <- newSTRef (mod (x1 * x2)) -- 1
-  t1 <- newSTRef (mod (y1 * y2))
-  t2 <- newSTRef (mod (z1 * z2))
-  t3 <- newSTRef (mod (x1 + y1)) -- 4
-  t4 <- newSTRef (mod (x2 + y2))
+  let b3 = modP (_CURVE_B * 3)
+  t0 <- newSTRef (modP (x1 * x2)) -- 1
+  t1 <- newSTRef (modP (y1 * y2))
+  t2 <- newSTRef (modP (z1 * z2))
+  t3 <- newSTRef (modP (x1 + y1)) -- 4
+  t4 <- newSTRef (modP (x2 + y2))
   readSTRef t4 >>= \r4 ->
-    modifySTRef' t3 (\r3 -> mod (r3 * r4))
+    modifySTRef' t3 (\r3 -> modP (r3 * r4))
   readSTRef t0 >>= \r0 ->
     readSTRef t1 >>= \r1 ->
-    writeSTRef t4 (mod (r0 + r1))
+    writeSTRef t4 (modP (r0 + r1))
   readSTRef t4 >>= \r4 ->
-    modifySTRef' t3 (\r3 -> mod (r3 - r4)) -- 8
-  writeSTRef t4 (mod (y1 + z1))
-  writeSTRef x3 (mod (y2 + z2))
+    modifySTRef' t3 (\r3 -> modP (r3 - r4)) -- 8
+  writeSTRef t4 (modP (y1 + z1))
+  writeSTRef x3 (modP (y2 + z2))
   readSTRef x3 >>= \rx3 ->
-    modifySTRef' t4 (\r4 -> mod (r4 * rx3))
+    modifySTRef' t4 (\r4 -> modP (r4 * rx3))
   readSTRef t1 >>= \r1 ->
     readSTRef t2 >>= \r2 ->
-    writeSTRef x3 (mod (r1 + r2)) -- 12
+    writeSTRef x3 (modP (r1 + r2)) -- 12
   readSTRef x3 >>= \rx3 ->
-    modifySTRef' t4 (\r4 -> mod (r4 - rx3))
-  writeSTRef x3 (mod (x1 + z1))
-  writeSTRef y3 (mod (x2 + z2))
+    modifySTRef' t4 (\r4 -> modP (r4 - rx3))
+  writeSTRef x3 (modP (x1 + z1))
+  writeSTRef y3 (modP (x2 + z2))
   readSTRef y3 >>= \ry3 ->
-    modifySTRef' x3 (\rx3 -> mod (rx3 * ry3)) -- 16
+    modifySTRef' x3 (\rx3 -> modP (rx3 * ry3)) -- 16
   readSTRef t0 >>= \r0 ->
     readSTRef t2 >>= \r2 ->
-    writeSTRef y3 (mod (r0 + r2))
+    writeSTRef y3 (modP (r0 + r2))
   readSTRef x3 >>= \rx3 ->
-    modifySTRef' y3 (\ry3 -> mod (rx3 - ry3))
+    modifySTRef' y3 (\ry3 -> modP (rx3 - ry3))
   readSTRef t0 >>= \r0 ->
-    writeSTRef x3 (mod (r0 + r0))
+    writeSTRef x3 (modP (r0 + r0))
   readSTRef x3 >>= \rx3 ->
-    modifySTRef t0 (\r0 -> mod (rx3 + r0)) -- 20
-  modifySTRef' t2 (\r2 -> mod (b3 * r2))
+    modifySTRef t0 (\r0 -> modP (rx3 + r0)) -- 20
+  modifySTRef' t2 (\r2 -> modP (b3 * r2))
   readSTRef t1 >>= \r1 ->
     readSTRef t2 >>= \r2 ->
-    writeSTRef z3 (mod (r1 + r2))
+    writeSTRef z3 (modP (r1 + r2))
   readSTRef t2 >>= \r2 ->
-    modifySTRef' t1 (\r1 -> mod (r1 - r2))
-  modifySTRef' y3 (\ry3 -> mod (b3 * ry3)) -- 24
+    modifySTRef' t1 (\r1 -> modP (r1 - r2))
+  modifySTRef' y3 (\ry3 -> modP (b3 * ry3)) -- 24
   readSTRef t4 >>= \r4 ->
     readSTRef y3 >>= \ry3 ->
-    writeSTRef x3 (mod (r4 * ry3))
+    writeSTRef x3 (modP (r4 * ry3))
   readSTRef t3 >>= \r3 ->
     readSTRef t1 >>= \r1 ->
-    writeSTRef t2 (mod (r3 * r1))
+    writeSTRef t2 (modP (r3 * r1))
   readSTRef t2 >>= \r2 ->
-    modifySTRef' x3 (\rx3 -> mod (r2 - rx3))
+    modifySTRef' x3 (\rx3 -> modP (r2 - rx3))
   readSTRef t0 >>= \r0 ->
-    modifySTRef' y3 (\ry3 -> mod (ry3 * r0)) -- 28
+    modifySTRef' y3 (\ry3 -> modP (ry3 * r0)) -- 28
   readSTRef z3 >>= \rz3 ->
-    modifySTRef' t1 (\r1 -> mod (r1 * rz3))
+    modifySTRef' t1 (\r1 -> modP (r1 * rz3))
   readSTRef t1 >>= \r1 ->
-    modifySTRef' y3 (\ry3 -> mod (r1 + ry3))
+    modifySTRef' y3 (\ry3 -> modP (r1 + ry3))
   readSTRef t3 >>= \r3 ->
-    modifySTRef' t0 (\r0 -> mod (r0 * r3))
+    modifySTRef' t0 (\r0 -> modP (r0 * r3))
   readSTRef t4 >>= \r4 ->
-    modifySTRef' z3 (\rz3 -> mod (rz3 * r4)) -- 32
+    modifySTRef' z3 (\rz3 -> modP (rz3 * r4)) -- 32
   readSTRef t0 >>= \r0 ->
-    modifySTRef' z3 (\rz3 -> mod (rz3 + r0))
+    modifySTRef' z3 (\rz3 -> modP (rz3 + r0))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
 -- algo 8, renes et al, 2015
@@ -214,53 +215,53 @@ add_mixed (Projective x1 y1 z1) (Projective x2 y2 z2)
       x3 <- newSTRef 0
       y3 <- newSTRef 0
       z3 <- newSTRef 0
-      let b3 = mod (_CURVE_B * 3)
-      t0 <- newSTRef (mod (x1 * x2)) -- 1
-      t1 <- newSTRef (mod (y1 * y2))
-      t3 <- newSTRef (mod (x2 + y2))
-      t4 <- newSTRef (mod (x1 + y1)) -- 4
+      let b3 = modP (_CURVE_B * 3)
+      t0 <- newSTRef (modP (x1 * x2)) -- 1
+      t1 <- newSTRef (modP (y1 * y2))
+      t3 <- newSTRef (modP (x2 + y2))
+      t4 <- newSTRef (modP (x1 + y1)) -- 4
       readSTRef t4 >>= \r4 ->
-        modifySTRef' t3 (\r3 -> mod (r3 * r4))
+        modifySTRef' t3 (\r3 -> modP (r3 * r4))
       readSTRef t0 >>= \r0 ->
         readSTRef t1 >>= \r1 ->
-        writeSTRef t4 (mod (r0 + r1))
+        writeSTRef t4 (modP (r0 + r1))
       readSTRef t4 >>= \r4 ->
-        modifySTRef' t3 (\r3 -> mod (r3 - r4)) -- 7
-      writeSTRef t4 (mod (y2 * z1))
-      modifySTRef' t4 (\r4 -> mod (r4 + y1))
-      writeSTRef y3 (mod (x2 * z1)) -- 10
-      modifySTRef' y3 (\ry3 -> mod (ry3 + x1))
+        modifySTRef' t3 (\r3 -> modP (r3 - r4)) -- 7
+      writeSTRef t4 (modP (y2 * z1))
+      modifySTRef' t4 (\r4 -> modP (r4 + y1))
+      writeSTRef y3 (modP (x2 * z1)) -- 10
+      modifySTRef' y3 (\ry3 -> modP (ry3 + x1))
       readSTRef t0 >>= \r0 ->
-        writeSTRef x3 (mod (r0 + r0))
+        writeSTRef x3 (modP (r0 + r0))
       readSTRef x3 >>= \rx3 ->
-        modifySTRef' t0 (\r0 -> mod (rx3 + r0)) -- 13
-      t2 <- newSTRef (mod (b3 * z1))
+        modifySTRef' t0 (\r0 -> modP (rx3 + r0)) -- 13
+      t2 <- newSTRef (modP (b3 * z1))
       readSTRef t1 >>= \r1 ->
         readSTRef t2 >>= \r2 ->
-        writeSTRef z3 (mod (r1 + r2))
+        writeSTRef z3 (modP (r1 + r2))
       readSTRef t2 >>= \r2 ->
-        modifySTRef' t1 (\r1 -> mod (r1 - r2)) -- 16
-      modifySTRef' y3 (\ry3 -> mod (b3 * ry3))
+        modifySTRef' t1 (\r1 -> modP (r1 - r2)) -- 16
+      modifySTRef' y3 (\ry3 -> modP (b3 * ry3))
       readSTRef t4 >>= \r4 ->
         readSTRef y3 >>= \ry3 ->
-        writeSTRef x3 (mod (r4 * ry3))
+        writeSTRef x3 (modP (r4 * ry3))
       readSTRef t3 >>= \r3 ->
         readSTRef t1 >>= \r1 ->
-        writeSTRef t2 (mod (r3 * r1)) -- 19
+        writeSTRef t2 (modP (r3 * r1)) -- 19
       readSTRef t2 >>= \r2 ->
-        modifySTRef' x3 (\rx3 -> mod (r2 - rx3))
+        modifySTRef' x3 (\rx3 -> modP (r2 - rx3))
       readSTRef t0 >>= \r0 ->
-        modifySTRef' y3 (\ry3 -> mod (ry3 * r0))
+        modifySTRef' y3 (\ry3 -> modP (ry3 * r0))
       readSTRef z3 >>= \rz3 ->
-        modifySTRef' t1 (\r1 -> mod (r1 * rz3)) -- 22
+        modifySTRef' t1 (\r1 -> modP (r1 * rz3)) -- 22
       readSTRef t1 >>= \r1 ->
-        modifySTRef' y3 (\ry3 -> mod (r1 + ry3))
+        modifySTRef' y3 (\ry3 -> modP (r1 + ry3))
       readSTRef t3 >>= \r3 ->
-        modifySTRef' t0 (\r0 -> mod (r0 * r3))
+        modifySTRef' t0 (\r0 -> modP (r0 * r3))
       readSTRef t4 >>= \r4 ->
-        modifySTRef' z3 (\rz3 -> mod (rz3 * r4)) -- 25
+        modifySTRef' z3 (\rz3 -> modP (rz3 * r4)) -- 25
       readSTRef t0 >>= \r0 ->
-        modifySTRef' z3 (\rz3 -> mod (rz3 + r0))
+        modifySTRef' z3 (\rz3 -> modP (rz3 + r0))
       Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
 -- algo 9, renes et al, 2015
@@ -269,38 +270,38 @@ double (Projective x y z) = runST $ do
   x3 <- newSTRef 0
   y3 <- newSTRef 0
   z3 <- newSTRef 0
-  let b3 = mod (_CURVE_B * 3)
-  t0 <- newSTRef (mod (y * y)) -- 1
+  let b3 = modP (_CURVE_B * 3)
+  t0 <- newSTRef (modP (y * y)) -- 1
   readSTRef t0 >>= \r0 ->
-    writeSTRef z3 (mod (r0 + r0))
-  modifySTRef' z3 (\rz3 -> mod (rz3 + rz3))
-  modifySTRef' z3 (\rz3 -> mod (rz3 + rz3)) -- 4
-  t1 <- newSTRef (mod (y * z))
-  t2 <- newSTRef (mod (z * z))
-  modifySTRef t2 (\r2 -> mod (b3 * r2)) -- 7
+    writeSTRef z3 (modP (r0 + r0))
+  modifySTRef' z3 (\rz3 -> modP (rz3 + rz3))
+  modifySTRef' z3 (\rz3 -> modP (rz3 + rz3)) -- 4
+  t1 <- newSTRef (modP (y * z))
+  t2 <- newSTRef (modP (z * z))
+  modifySTRef t2 (\r2 -> modP (b3 * r2)) -- 7
   readSTRef z3 >>= \rz3 ->
     readSTRef t2 >>= \r2 ->
-    writeSTRef x3 (mod (r2 * rz3))
+    writeSTRef x3 (modP (r2 * rz3))
   readSTRef t0 >>= \r0 ->
     readSTRef t2 >>= \r2 ->
-    writeSTRef y3 (mod (r0 + r2))
+    writeSTRef y3 (modP (r0 + r2))
   readSTRef t1 >>= \r1 ->
-    modifySTRef' z3 (\rz3 -> mod (r1 * rz3)) -- 10
+    modifySTRef' z3 (\rz3 -> modP (r1 * rz3)) -- 10
   readSTRef t2 >>= \r2 ->
-    writeSTRef t1 (mod (r2 + r2))
+    writeSTRef t1 (modP (r2 + r2))
   readSTRef t1 >>= \r1 ->
-    modifySTRef' t2 (\r2 -> mod (r1 + r2))
+    modifySTRef' t2 (\r2 -> modP (r1 + r2))
   readSTRef t2 >>= \r2 ->
-    modifySTRef' t0 (\r0 -> mod (r0 - r2)) -- 13
+    modifySTRef' t0 (\r0 -> modP (r0 - r2)) -- 13
   readSTRef t0 >>= \r0 ->
-    modifySTRef' y3 (\ry3 -> mod (r0 * ry3))
+    modifySTRef' y3 (\ry3 -> modP (r0 * ry3))
   readSTRef x3 >>= \rx3 ->
-    modifySTRef' y3 (\ry3 -> mod (rx3 + ry3))
-  writeSTRef t1 (mod (x * y)) -- 16
+    modifySTRef' y3 (\ry3 -> modP (rx3 + ry3))
+  writeSTRef t1 (modP (x * y)) -- 16
   readSTRef t0 >>= \r0 ->
     readSTRef t1 >>= \r1 ->
-    writeSTRef x3 (mod (r0 * r1))
-  modifySTRef' x3 (\rx3 -> mod (rx3 + rx3))
+    writeSTRef x3 (modP (r0 * r1))
+  modifySTRef' x3 (\rx3 -> modP (rx3 + rx3))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
 mul :: Projective -> Integer -> Projective
@@ -339,9 +340,9 @@ affine p@(Projective x y z)
   | z == 1     = pure (Affine x y)
   | otherwise  = do
       iz <- modinv z (fromIntegral _CURVE_P)
-      if   mod (z * iz) /= 1
+      if   modP (z * iz) /= 1
       then Nothing
-      else pure (Affine (mod (x * iz)) (mod (y * iz)))
+      else pure (Affine (modP (x * iz)) (modP (y * iz)))
 
 -- | Convert to projective coordinates.
 projective :: Affine -> Projective
@@ -355,7 +356,7 @@ valid p = case affine p of
   Nothing -> False
   Just (Affine x y)
     | not (fe x) || not (fe y) -> False
-    | mod (y * y) /= weierstrass x -> False
+    | modP (y * y) /= weierstrass x -> False
     | otherwise -> True
 
 -- | Parse hex-encoded compressed or uncompressed point.
@@ -377,7 +378,7 @@ parse (B16.decode -> ebs) = case ebs of
                        hodd = I.integerTestBit h 0
                    pure $
                      if   hodd /= yodd
-                     then Projective x (mod (negate y)) 1
+                     then Projective x (modP (negate y)) 1
                      else Projective x y 1
             else -- uncompressed
                  if   len == 65 && h == 0x04
@@ -424,7 +425,7 @@ int2octets = unroll
 bits2octets :: BS.ByteString -> BS.ByteString
 bits2octets bs =
   let z1 = bits2int bs
-      z2 = mod z1 -- XX correct modulo?
+      z2 = modP z1 -- XX correct modulo?
   in  int2octets z2
 
 
