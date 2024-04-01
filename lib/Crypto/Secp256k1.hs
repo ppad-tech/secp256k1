@@ -17,16 +17,19 @@ import GHC.Natural
 import qualified GHC.Num.Integer as I
 import Prelude hiding (mod)
 
-_B256 :: Integer
-_B256 = 2 ^ (256 :: Integer)
-
 -- secp256k1 field prime
+--
+-- _CURVE_P == 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
 _CURVE_P :: Integer
-_CURVE_P = _B256 - 0x1000003d1
+_CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
 -- secp256k1 group order
 _CURVE_N :: Integer
-_CURVE_N = _B256 - 0x14551231950b75fc4402da1732fc9bebf
+_CURVE_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+-- smallest integer such that _CURVE_N < 2 ^ _CURVE_N_LEN
+_CURVE_N_LEN :: Integer
+_CURVE_N_LEN = 256
 
 -- secp256k1 short weierstrass form, /a/ coefficient
 _CURVE_A :: Integer
@@ -36,23 +39,55 @@ _CURVE_A = 0
 _CURVE_B :: Integer
 _CURVE_B = 7
 
--- secp256k1 base point, x coordinate
-_CURVE_GX :: Integer
-_CURVE_GX = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+_CURVE_G :: BS.ByteString
+_CURVE_G =
+  "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
 
--- secp256k1 base point, y coordinate
-_CURVE_GY :: Integer
-_CURVE_GY = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+-- point in affine coordinates
+data Affine = Affine Integer Integer
+  deriving stock (Show, Generic)
 
--- modular division by secp256k1 group order
+instance Eq Affine where
+  Affine x1 y1 == Affine x2 y2 =
+    mod x1 == mod x2 && mod y1 == mod y2
+
+-- point in projective coordinates
+data Projective = Projective {
+    px :: !Integer
+  , py :: !Integer
+  , pz :: !Integer
+  }
+  deriving stock (Show, Generic)
+
+instance Eq Projective where
+  Projective ax ay az == Projective bx by bz =
+    let x1z2 = mod (ax * bz)
+        x2z1 = mod (bx * az)
+        y1z2 = mod (ay * bz)
+        y2z1 = mod (by * az)
+    in  x1z2 == x2z1 && y1z2 == y2z1
+
+-- secp256k1 base point
+--
+-- Just _BASE == parse _CURVE_G
+_BASE :: Projective
+_BASE = Projective x y 1 where
+  x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+  y = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+
+-- secp256k1 zero point
+_ZERO :: Projective
+_ZERO = Projective 0 1 0
+
+-- | Division modulo secp256k1 field prime.
 mod :: Integer -> Integer
 mod a = I.integerMod a _CURVE_P
 
--- is field element (i.e., is invertible)
+-- | Is field element.
 fe :: Integer -> Bool
 fe n = 0 < n && n < _CURVE_P
 
--- is group element
+-- | Is group element.
 ge :: Integer -> Bool
 ge n = 0 < n && n < _CURVE_N
 
@@ -88,34 +123,6 @@ modsqrt n = runST $ do
 -- prime order j-invariant 0 (i.e. a == 0)
 weierstrass :: Integer -> Integer
 weierstrass x = mod (mod (x * x) * x + _CURVE_B)
-
-data Affine = Affine Integer Integer
-  deriving stock (Show, Generic)
-
-instance Eq Affine where
-  Affine x1 y1 == Affine x2 y2 =
-    mod x1 == mod x2 && mod y1 == mod y2
-
-data Projective = Projective {
-    px :: !Integer
-  , py :: !Integer
-  , pz :: !Integer
-  }
-  deriving stock (Show, Generic)
-
-instance Eq Projective where
-  Projective ax ay az == Projective bx by bz =
-    let x1z2 = mod (ax * bz)
-        x2z1 = mod (bx * az)
-        y1z2 = mod (ay * bz)
-        y2z1 = mod (by * az)
-    in  x1z2 == x2z1 && y1z2 == y2z1
-
-_ZERO :: Projective
-_ZERO = Projective 0 1 0
-
-_BASE :: Projective
-_BASE = Projective _CURVE_GX _CURVE_GY 1
 
 -- negate point
 neg :: Projective -> Projective
@@ -310,8 +317,7 @@ mul p n
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
 
--- XX confirm nf evaluation
--- timing safety
+-- XX confirm timing safety
 mul_safe :: Projective -> Integer -> Projective
 mul_safe p n
     | not (ge n) = error "ppad-secp256k1 (mul_safe): scalar not in group"
@@ -326,7 +332,7 @@ mul_safe p n
               then loop (add r d) f nd nm
               else loop r (add f d) nd nm
 
--- to affine coordinates
+-- | Convert to affine coordinates.
 affine :: Projective -> Maybe Affine
 affine p@(Projective x y z)
   | p == _ZERO = pure (Affine 0 0)
@@ -337,13 +343,13 @@ affine p@(Projective x y z)
       then Nothing
       else pure (Affine (mod (x * iz)) (mod (y * iz)))
 
--- to projective coordinates
+-- | Convert to projective coordinates.
 projective :: Affine -> Projective
 projective (Affine x y)
   | x == 0 && y == 0 = _ZERO
   | otherwise = Projective x y 1
 
--- point is valid
+-- | Point is valid
 valid :: Projective -> Bool
 valid p = case affine p of
   Nothing -> False
@@ -352,16 +358,17 @@ valid p = case affine p of
     | mod (y * y) /= weierstrass x -> False
     | otherwise -> True
 
--- parse hex-encoded point
+-- | Parse hex-encoded compressed or uncompressed point.
 parse :: BS.ByteString -> Maybe Projective
 parse (B16.decode -> ebs) = case ebs of
     Left _   -> Nothing
     Right bs -> case BS.uncons bs of
       Nothing -> Nothing
       Just (fromIntegral -> h, t) ->
-        let (roll -> x, etc) = BS.splitAt _GROUP_BYTELENGTH t
+        let (roll -> x, etc) = BS.splitAt _CURVE_N_BYTES t
             len = BS.length bs
-        in  if   len == 33 && (h == 0x02 || h == 0x03) -- compressed
+        in  -- compressed
+            if   len == 33 && (h == 0x02 || h == 0x03)
             then if   not (fe x)
                  then Nothing
                  else do
@@ -372,19 +379,52 @@ parse (B16.decode -> ebs) = case ebs of
                      if   hodd /= yodd
                      then Projective x (mod (negate y)) 1
                      else Projective x y 1
-            else if   len == 65 && h == 0x04 -- uncompressed
-                 then let (roll -> y, _) = BS.splitAt _GROUP_BYTELENGTH etc
+            else -- uncompressed
+                 if   len == 65 && h == 0x04
+                 then let (roll -> y, _) = BS.splitAt _CURVE_N_BYTES etc
                           p = Projective x y 1
                       in  if   valid p
                           then Just p
                           else Nothing
                  else Nothing
   where
-    _GROUP_BYTELENGTH :: Int
-    _GROUP_BYTELENGTH = 32
+    _CURVE_N_BYTES :: Int
+    _CURVE_N_BYTES = 32
 
 -- big-endian bytestring decoding
 roll :: BS.ByteString -> Integer
 roll = BS.foldl' unstep 0 where
   unstep a (fromIntegral -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+
+-- big-endian bytestring encoding
+unroll :: Integer -> BS.ByteString
+unroll i = case i of
+    0 -> BS.singleton 0
+    _ -> BS.reverse $ BS.unfoldr step i
+  where
+    step 0 = Nothing
+    step m = Just (fromIntegral m, m `I.integerShiftR` 8)
+
+-- XX not sure how much i need these things; do roll and unroll suffice?
+
+-- RFC6979
+bits2int :: BS.ByteString -> Integer
+bits2int bs =
+  let (fromIntegral -> del) = BS.length bs * 8 - 256
+      num = roll bs
+  in  if   del > 0
+      then num `I.integerShiftR` del
+      else num
+
+-- RFC6979
+int2octets :: Integer -> BS.ByteString
+int2octets = unroll
+
+-- RFC6979
+bits2octets :: BS.ByteString -> BS.ByteString
+bits2octets bs =
+  let z1 = bits2int bs
+      z2 = mod z1 -- XX correct modulo?
+  in  int2octets z2
+
 
