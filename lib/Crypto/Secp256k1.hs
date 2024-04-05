@@ -343,15 +343,13 @@ mul_safe p n
               else loop r (add f d) nd nm
 
 -- | Convert to affine coordinates.
-affine :: Projective -> Maybe Affine
+affine :: Projective -> Affine
 affine p@(Projective x y z)
-  | p == _ZERO = pure (Affine 0 0)
-  | z == 1     = pure (Affine x y)
-  | otherwise  = do
-      iz <- modinv z (fromIntegral _CURVE_P)
-      if   modP (z * iz) /= 1
-      then Nothing
-      else pure (Affine (modP (x * iz)) (modP (y * iz)))
+  | p == _ZERO = Affine 0 0
+  | z == 1     = Affine x y
+  | otherwise  = case modinv z (fromIntegral _CURVE_P) of
+      Nothing -> error "ppad-secp256k1 (affine): impossible point"
+      Just iz -> Affine (modP (x * iz)) (modP (y * iz))
 
 -- | Convert to projective coordinates.
 projective :: Affine -> Projective
@@ -362,8 +360,7 @@ projective (Affine x y)
 -- | Point is valid
 valid :: Projective -> Bool
 valid p = case affine p of
-  Nothing -> False
-  Just (Affine x y)
+  Affine x y
     | not (fe x) || not (fe y) -> False
     | modP (y * y) /= weierstrass x -> False
     | otherwise -> True
