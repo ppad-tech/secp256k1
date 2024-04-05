@@ -413,7 +413,7 @@ unroll i = case i of
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
   let (fromIntegral -> blen) = BS.length bs * 8
-      (fromIntegral -> qlen) = _CURVE_N_LEN
+      (fromIntegral -> qlen) = _CURVE_N_LEN -- RFC6979 notation
       del = blen - qlen
   in  if   del > 0
       then roll bs `I.integerShiftR` del
@@ -430,11 +430,20 @@ int2octets i = pad (unroll i) where
 bits2octets :: BS.ByteString -> BS.ByteString
 bits2octets bs =
   let z1 = bits2int bs
-      z2 = let d = z1 - _CURVE_N
-           in  if   d < 0
-               then z1
-               else d
+      z2 = modN z1
   in  int2octets z2
+
+-- XX handle low-s
+sign :: BS.ByteString -> Integer -> Integer -> (Integer, Integer)
+sign (modN . bits2int -> h) k x =
+  let kg = mul _CURVE_G k
+      Affine (modN -> r) _ = affine kg
+      s = case modinv k (fromIntegral _CURVE_N) of
+        Nothing   -> error "ppad-secp256k1 (sign): bad k value"
+        Just kinv -> modN (modN (h + modN (x * r)) * kinv)
+  in  if   r == 0
+      then error "ppad-secp256k1 (sign): <negligible probability outcome>"
+      else (r, s)
 
 -- XX test
 
