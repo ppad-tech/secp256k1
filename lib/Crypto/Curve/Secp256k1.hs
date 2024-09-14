@@ -6,7 +6,7 @@
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Crypto.Secp256k1 where
+module Crypto.Curve.Secp256k1 where
 
 import Control.Monad (when)
 import Control.Monad.ST
@@ -138,6 +138,7 @@ neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (modP (negate y)) z
 
 -- general ec addition
+-- XX possibly shouldn't mix algos due to constant-time issues
 add :: Projective -> Projective -> Projective
 add p q@(Projective _ _ z)
   | p == q = double p        -- algo 9
@@ -146,6 +147,8 @@ add p q@(Projective _ _ z)
 
 -- algo 7, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
+--
+-- https://eprint.iacr.org/2015/1060.pdf
 add_proj :: Projective -> Projective -> Projective
 add_proj (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
   x3 <- newSTRef 0

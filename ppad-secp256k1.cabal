@@ -24,7 +24,7 @@ library
   ghc-options:
       -Wall
   exposed-modules:
-      Crypto.Secp256k1
+      Crypto.Curve.Secp256k1
   build-depends:
       base
     , base16-bytestring
