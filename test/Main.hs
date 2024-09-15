@@ -3,7 +3,7 @@
 module Main where
 
 import qualified Data.ByteString as BS
-import Crypto.Secp256k1
+import Crypto.Curve.Secp256k1
 import Test.Tasty
 import Test.Tasty.HUnit
 

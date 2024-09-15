@@ -4,9 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    ppad-sha256.url  = "git://git.ppad.tech/sha256.git";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, ppad-sha256 }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         lib = "ppad-secp256k1";
@@ -16,6 +17,7 @@
 
         hpkgs = pkgs.haskell.packages.ghc964.override {
           overrides = new: old: {
+            ppad-sha256 = ppad-sha256.packages.${system}.ppad-sha256;
             ${lib} = old.callCabal2nix lib ./. {};
           };
         };
@@ -27,7 +29,7 @@
         {
           packages.${lib} = hpkgs.${lib};
 
-          defaultPackage = self.packages.${system}.${lib};
+          packages.default = self.packages.${system}.${lib};
 
           devShells.default = hpkgs.shellFor {
             packages = p: [
