@@ -6,7 +6,7 @@ module Main where
 import qualified Data.ByteString as BS
 import Control.DeepSeq
 import Criterion.Main
-import qualified Crypto.Secp256k1 as S
+import qualified Crypto.Curve.Secp256k1 as S
 
 instance NFData S.Projective
 instance NFData S.Affine
