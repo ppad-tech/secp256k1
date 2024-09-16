@@ -18,6 +18,11 @@ import GHC.Natural
 import qualified GHC.Num.Integer as I
 import Prelude hiding (mod)
 
+-- keystroke saver
+
+fi :: (Integral a, Num b) => a -> b
+fi = fromIntegral
+
 -- see https://www.secg.org/sec2-v2.pdf for parameter specs
 
 -- secp256k1 field prime
@@ -102,7 +107,7 @@ ge n = 0 < n && n < _CURVE_N
 -- for a, m return x such that ax = 1 mod m
 modinv :: Integer -> Natural -> Maybe Integer
 modinv a m = case I.integerRecipMod# a m of
-  (# fromIntegral -> n | #) -> Just n
+  (# fi -> n | #) -> Just n
   (# | _ #) -> Nothing
 
 -- modular square root (shanks-tonelli)
@@ -350,7 +355,7 @@ affine :: Projective -> Affine
 affine p@(Projective x y z)
   | p == _ZERO = Affine 0 0
   | z == 1     = Affine x y
-  | otherwise  = case modinv z (fromIntegral _CURVE_P) of
+  | otherwise  = case modinv z (fi _CURVE_P) of
       Nothing -> error "ppad-secp256k1 (affine): impossible point"
       Just iz -> Affine (modP (x * iz)) (modP (y * iz))
 
@@ -374,7 +379,7 @@ parse (B16.decode -> ebs) = case ebs of
   Left _   -> Nothing
   Right bs -> case BS.uncons bs of
     Nothing -> Nothing
-    Just (fromIntegral -> h, t) ->
+    Just (fi -> h, t) ->
       let (roll -> x, etc) = BS.splitAt _CURVE_N_BYTES t
           len = BS.length bs
       in  -- compressed
@@ -401,7 +406,7 @@ parse (B16.decode -> ebs) = case ebs of
 -- big-endian bytestring decoding
 roll :: BS.ByteString -> Integer
 roll = BS.foldl' unstep 0 where
-  unstep a (fromIntegral -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+  unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
@@ -410,13 +415,13 @@ unroll i = case i of
     _ -> BS.reverse $ BS.unfoldr step i
   where
     step 0 = Nothing
-    step m = Just (fromIntegral m, m `I.integerShiftR` 8)
+    step m = Just (fi m, m `I.integerShiftR` 8)
 
 -- RFC6979
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
-  let (fromIntegral -> blen) = BS.length bs * 8
-      (fromIntegral -> qlen) = _CURVE_N_LEN -- RFC6979 notation
+  let (fi -> blen) = BS.length bs * 8
+      (fi -> qlen) = _CURVE_N_LEN -- RFC6979 notation
       del = blen - qlen
   in  if   del > 0
       then roll bs `I.integerShiftR` del
@@ -441,7 +446,7 @@ sign :: BS.ByteString -> Integer -> Integer -> (Integer, Integer)
 sign (modN . bits2int -> h) k x =
   let kg = mul _CURVE_G k
       Affine (modN -> r) _ = affine kg
-      s = case modinv k (fromIntegral _CURVE_N) of
+      s = case modinv k (fi _CURVE_N) of
         Nothing   -> error "ppad-secp256k1 (sign): bad k value"
         Just kinv -> modN (modN (h + modN (x * r)) * kinv)
   in  if   r == 0
