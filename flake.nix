@@ -2,9 +2,15 @@
   description = "ppad-secp256k1";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs = {
+      follows = "ppad-sha256/nixpkgs";
+    };
     flake-utils.url = "github:numtide/flake-utils";
-    ppad-sha256.url  = "git://git.ppad.tech/sha256.git";
+    ppad-sha256 = {
+      type = "git";
+      url  = "git://git.ppad.tech/sha256.git";
+      ref  = "v0.1.0";
+    };
   };
 
   outputs = { self, nixpkgs, flake-utils, ppad-sha256 }:
@@ -18,7 +24,7 @@
         hpkgs = pkgs.haskell.packages.ghc964.override {
           overrides = new: old: {
             ppad-sha256 = ppad-sha256.packages.${system}.ppad-sha256;
-            ${lib} = old.callCabal2nix lib ./. {};
+            ${lib} = new.callCabal2nix lib ./. { };
           };
         };
 
