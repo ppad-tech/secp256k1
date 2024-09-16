@@ -2,15 +2,13 @@
   description = "Pure Haskell cryptographic primitives on secp256k1";
 
   inputs = {
-    nixpkgs = {
-      follows = "ppad-sha256/nixpkgs";
-    };
-    flake-utils.url = "github:numtide/flake-utils";
     ppad-sha256 = {
       type = "git";
       url  = "git://git.ppad.tech/sha256.git";
-      ref  = "v0.1.0";
+      ref  = "master";
     };
+    flake-utils.follows = "ppad-sha256/flake-utils";
+    nixpkgs.follows = "ppad-sha256/nixpkgs";
   };
 
   outputs = { self, nixpkgs, flake-utils, ppad-sha256 }:
@@ -21,21 +19,21 @@
         pkgs = import nixpkgs { inherit system; };
         hlib = pkgs.haskell.lib;
 
-        hpkgs = pkgs.haskell.packages.ghc964.override {
-          overrides = new: old: {
-            ppad-sha256 = ppad-sha256.packages.${system}.ppad-sha256;
-            ${lib} = new.callCabal2nix lib ./. { };
+        sha256 = ppad-sha256.packages.${system}.default;
+
+        hpkgs = pkgs.haskell.packages.ghc964.extend (new: old: {
+          ppad-sha256 = ppad-sha256.packages.${system}.default;
+          ${lib} = new.callCabal2nix lib ./. {
+            inherit (new) ppad-sha256;
           };
-        };
+        });
 
         cc    = pkgs.stdenv.cc;
         ghc   = hpkgs.ghc;
         cabal = hpkgs.cabal-install;
       in
         {
-          packages.${lib} = hpkgs.${lib};
-
-          packages.default = self.packages.${system}.${lib};
+          packages.default = hpkgs.${lib};
 
           devShells.default = hpkgs.shellFor {
             packages = p: [
