@@ -1,5 +1,5 @@
 {
-  description = "ppad-secp256k1";
+  description = "Pure Haskell cryptographic primitives on secp256k1";
 
   inputs = {
     nixpkgs = {
