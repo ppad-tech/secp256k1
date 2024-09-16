@@ -21,10 +21,10 @@
 
         sha256 = ppad-sha256.packages.${system}.default;
 
-        hpkgs = pkgs.haskell.packages.ghc964.extend (new: old: {
+        hpkgs = pkgs.haskell.packages.ghc981.extend (new: old: {
           ppad-sha256 = ppad-sha256.packages.${system}.default;
           ${lib} = new.callCabal2nix lib ./. {
-            inherit (new) ppad-sha256;
+            ppad-sha256 = new.ppad-sha256;
           };
         });
 
