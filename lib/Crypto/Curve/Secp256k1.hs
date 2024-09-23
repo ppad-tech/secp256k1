@@ -12,50 +12,29 @@ import Control.Monad (when)
 import Control.Monad.ST
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
+import Data.Int (Int64)
 import Data.STRef
 import GHC.Generics
 import GHC.Natural
 import qualified GHC.Num.Integer as I
 import Prelude hiding (mod)
 
--- keystroke saver
+-- keystroke savers & other utilities -----------------------------------------
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
+{-# INLINE fi #-}
 
--- see https://www.secg.org/sec2-v2.pdf for parameter specs
+-- generic modular inverse
+-- for a, m return x such that ax = 1 mod m
+modinv :: Integer -> Natural -> Maybe Integer
+modinv a m = case I.integerRecipMod# a m of
+  (# fi -> n | #) -> Just $! n
+  (# | _ #) -> Nothing
 
--- secp256k1 field prime
---
--- ~ 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
-_CURVE_P :: Integer
-_CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+-- coordinate systems ---------------------------------------------------------
 
--- | Division modulo secp256k1 field prime.
-modP :: Integer -> Integer
-modP a = I.integerMod a _CURVE_P
-
--- secp256k1 group order
-_CURVE_N :: Integer
-_CURVE_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-
--- smallest integer such that _CURVE_N < 2 ^ _CURVE_N_LEN
-_CURVE_N_LEN :: Integer
-_CURVE_N_LEN = 256
-
--- bytelength of _CURVE_N
-_CURVE_N_BYTES :: Int
-_CURVE_N_BYTES = 32
-
--- secp256k1 short weierstrass form, /a/ coefficient
-_CURVE_A :: Integer
-_CURVE_A = 0
-
--- secp256k1 weierstrass form, /b/ coefficient
-_CURVE_B :: Integer
-_CURVE_B = 7
-
--- point in affine coordinates
+-- curve point, affine coordinates
 data Affine = Affine !Integer !Integer
   deriving stock (Show, Generic)
 
@@ -63,7 +42,7 @@ instance Eq Affine where
   Affine x1 y1 == Affine x2 y2 =
     modP x1 == modP x2 && modP y1 == modP y2
 
--- point in projective coordinates
+-- curve point, projective coordinates
 data Projective = Projective {
     px :: !Integer
   , py :: !Integer
@@ -79,9 +58,65 @@ instance Eq Projective where
         y2z1 = modP (by * az)
     in  x1z2 == x2z1 && y1z2 == y2z1
 
+-- | Convert to affine coordinates.
+affine :: Projective -> Affine
+affine p@(Projective x y z)
+  | p == _ZERO = Affine 0 0
+  | z == 1     = Affine x y
+  | otherwise  = case modinv z (fi _CURVE_P) of
+      Nothing -> error "ppad-secp256k1 (affine): impossible point"
+      Just iz -> Affine (modP (x * iz)) (modP (y * iz))
+
+-- | Convert to projective coordinates.
+projective :: Affine -> Projective
+projective (Affine x y)
+  | x == 0 && y == 0 = _ZERO
+  | otherwise = Projective x y 1
+
+-- | Point is valid
+valid :: Projective -> Bool
+valid p = case affine p of
+  Affine x y
+    | not (fe x) || not (fe y) -> False
+    | modP (y * y) /= weierstrass x -> False
+    | otherwise -> True
+
+-- curve parameters -----------------------------------------------------------
+-- see https://www.secg.org/sec2-v2.pdf for parameter specs
+
+-- secp256k1 field prime
+--
+-- = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
+_CURVE_P :: Integer
+_CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+
+-- secp256k1 group order
+_CURVE_N :: Integer
+_CURVE_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+-- bitlength of group order
+--
+-- = smallest integer such that _CURVE_N < 2 ^ _CURVE_N_BITS
+_CURVE_N_BITS :: Int64
+_CURVE_N_BITS = 256
+
+-- bytelength of _CURVE_N
+--
+-- = _CURVE_N_BITS / 8
+_CURVE_N_BYTES :: Int64
+_CURVE_N_BYTES = 32
+
+-- secp256k1 short weierstrass form, /a/ coefficient
+_CURVE_A :: Integer
+_CURVE_A = 0
+
+-- secp256k1 weierstrass form, /b/ coefficient
+_CURVE_B :: Integer
+_CURVE_B = 7
+
 -- secp256k1 generator
 --
--- ~ parse "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
+-- = parse "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
 _CURVE_G :: Projective
 _CURVE_G = Projective x y 1 where
   x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
@@ -91,27 +126,31 @@ _CURVE_G = Projective x y 1 where
 _ZERO :: Projective
 _ZERO = Projective 0 1 0
 
+-- | secp256k1 in prime order j-invariant 0 form (i.e. a == 0).
+weierstrass :: Integer -> Integer
+weierstrass x = modP (modP (x * x) * x + _CURVE_B)
+
+-- field, group operations ----------------------------------------------------
+
+-- | Division modulo secp256k1 field prime.
+modP :: Integer -> Integer
+modP a = I.integerMod a _CURVE_P
+
 -- | Division modulo secp256k1 group order.
 modN :: Integer -> Integer
 modN a = I.integerMod a _CURVE_N
 
--- | Is field element.
+-- | Is field element?
 fe :: Integer -> Bool
 fe n = 0 < n && n < _CURVE_P
 
--- | Is group element.
+-- | Is group element?
 ge :: Integer -> Bool
 ge n = 0 < n && n < _CURVE_N
 
--- modular inverse
--- for a, m return x such that ax = 1 mod m
-modinv :: Integer -> Natural -> Maybe Integer
-modinv a m = case I.integerRecipMod# a m of
-  (# fi -> n | #) -> Just n
-  (# | _ #) -> Nothing
-
--- modular square root (shanks-tonelli)
--- for a, m return x such that a = xx mod m
+-- | Square root (Shanks-Tonelli) modulo secp256k1 field prime.
+--
+--   For a, return x such that a = x x mod _CURVE_P.
 modsqrt :: Integer -> Maybe Integer
 modsqrt n = runST $ do
     r   <- newSTRef 1
@@ -121,7 +160,7 @@ modsqrt n = runST $ do
     rr  <- readSTRef r
     pure $
       if   modP (rr * rr) == n
-      then Just rr
+      then Just $! rr
       else Nothing
   where
     loop sr snum se = do
@@ -134,16 +173,13 @@ modsqrt n = runST $ do
         modifySTRef' se (`I.integerShiftR` 1)
         loop sr snum se
 
--- prime order j-invariant 0 (i.e. a == 0)
-weierstrass :: Integer -> Integer
-weierstrass x = modP (modP (x * x) * x + _CURVE_B)
+-- ec point operations --------------------------------------------------------
 
--- negate point
+-- | Negate secp256k1 point.
 neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (modP (negate y)) z
 
--- general ec addition
--- XX possibly shouldn't mix algos due to constant-time issues
+-- | Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
 add p q@(Projective _ _ z)
   | p == q = double p        -- algo 9
@@ -320,7 +356,7 @@ double (Projective x y z) = runST $ do
   modifySTRef' x3 (\rx3 -> modP (rx3 + rx3))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
--- ec scalar multiplication
+-- | Scalar multiplication of secp256k1 points.
 mul :: Projective -> Integer -> Projective
 mul p n
     | n == 0 = _ZERO
@@ -335,7 +371,7 @@ mul p n
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
 
--- XX confirm timing safety
+-- | Safe scalar multiplication of secp256k1 points.
 mul_safe :: Projective -> Integer -> Projective
 mul_safe p n
     | not (ge n) = error "ppad-secp256k1 (mul_safe): scalar not in group"
@@ -350,28 +386,7 @@ mul_safe p n
               then loop (add r d) f nd nm
               else loop r (add f d) nd nm
 
--- | Convert to affine coordinates.
-affine :: Projective -> Affine
-affine p@(Projective x y z)
-  | p == _ZERO = Affine 0 0
-  | z == 1     = Affine x y
-  | otherwise  = case modinv z (fi _CURVE_P) of
-      Nothing -> error "ppad-secp256k1 (affine): impossible point"
-      Just iz -> Affine (modP (x * iz)) (modP (y * iz))
-
--- | Convert to projective coordinates.
-projective :: Affine -> Projective
-projective (Affine x y)
-  | x == 0 && y == 0 = _ZERO
-  | otherwise = Projective x y 1
-
--- | Point is valid
-valid :: Projective -> Bool
-valid p = case affine p of
-  Affine x y
-    | not (fe x) || not (fe y) -> False
-    | modP (y * y) /= weierstrass x -> False
-    | otherwise -> True
+-- parsing --------------------------------------------------------------------
 
 -- | Parse hex-encoded compressed or uncompressed point.
 parse :: BS.ByteString -> Maybe Projective
@@ -380,10 +395,9 @@ parse (B16.decode -> ebs) = case ebs of
   Right bs -> case BS.uncons bs of
     Nothing -> Nothing
     Just (fi -> h, t) ->
-      let (roll -> x, etc) = BS.splitAt _CURVE_N_BYTES t
+      let (roll -> x, etc) = BS.splitAt (fi _CURVE_N_BYTES) t
           len = BS.length bs
-      in  -- compressed
-          if   len == 33 && (h == 0x02 || h == 0x03)
+      in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
           then if   not (fe x)
                then Nothing
                else do
@@ -394,9 +408,9 @@ parse (B16.decode -> ebs) = case ebs of
                    if   hodd /= yodd
                    then Projective x (modP (negate y)) 1
                    else Projective x y 1
-          else -- uncompressed
-               if   len == 65 && h == 0x04
-               then let (roll -> y, _) = BS.splitAt _CURVE_N_BYTES etc
+          else
+               if   len == 65 && h == 0x04            -- uncompressed
+               then let (roll -> y, _) = BS.splitAt (fi _CURVE_N_BYTES) etc
                         p = Projective x y 1
                     in  if   valid p
                         then Just p
@@ -421,7 +435,7 @@ unroll i = case i of
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
   let (fi -> blen) = BS.length bs * 8
-      (fi -> qlen) = _CURVE_N_LEN -- RFC6979 notation
+      (fi -> qlen) = _CURVE_N_BITS -- RFC6979 notation
       del = blen - qlen
   in  if   del > 0
       then roll bs `I.integerShiftR` del
@@ -431,7 +445,7 @@ bits2int bs =
 int2octets :: Integer -> BS.ByteString
 int2octets i = pad (unroll i) where
   pad !bs
-    | BS.length bs < _CURVE_N_BYTES = pad (BS.cons 0 bs)
+    | BS.length bs < fi _CURVE_N_BYTES = pad (BS.cons 0 bs)
     | otherwise = bs
 
 -- RFC6979
