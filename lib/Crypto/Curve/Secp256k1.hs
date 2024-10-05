@@ -439,7 +439,7 @@ unroll i = case i of
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
   let (fi -> blen) = BS.length bs * 8
-      (fi -> qlen) = _CURVE_Q_BITS -- RFC6979 notation
+      (fi -> qlen) = _CURVE_Q_BITS
       del = blen - qlen
   in  if   del > 0
       then roll bs `I.integerShiftR` del
@@ -460,7 +460,7 @@ bits2octets bs =
   in  int2octets z2
 
 -- ecdsa ----------------------------------------------------------------------
--- see https://www.rfc-editor.org/rfc/rfc6979 for deterministic ECDSA spec
+-- see https://www.rfc-editor.org/rfc/rfc6979
 
 data ECDSA = ECDSA {
     ecdsa_r :: !Integer
