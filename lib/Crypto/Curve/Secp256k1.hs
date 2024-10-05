@@ -181,6 +181,8 @@ modsqrt n = runST $ do
 neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (modP (negate y)) z
 
+-- XX check implications on timing safety by special-casing algos below
+
 -- | Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
 add p q@(Projective _ _ z)
@@ -433,7 +435,7 @@ unroll i = case i of
     step 0 = Nothing
     step m = Just (fi m, m `I.integerShiftR` 8)
 
--- RFC6979
+-- RFC6979 2.3.2
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
   let (fi -> blen) = BS.length bs * 8
@@ -443,64 +445,63 @@ bits2int bs =
       then roll bs `I.integerShiftR` del
       else roll bs
 
--- XX think this shouldn't be padded as it is
-
--- RFC6979
+-- RFC6979 2.3.3
 int2octets :: Integer -> BS.ByteString
 int2octets i = pad (unroll i) where
   pad !bs
     | BS.length bs < fi _CURVE_Q_BYTES = pad (BS.cons 0 bs)
     | otherwise = bs
 
--- RFC6979
+-- RFC6979 2.3.4
 bits2octets :: BS.ByteString -> BS.ByteString
 bits2octets bs =
   let z1 = bits2int bs
       z2 = modQ z1
   in  int2octets z2
 
+-- ecdsa ----------------------------------------------------------------------
+-- see https://www.rfc-editor.org/rfc/rfc6979 for deterministic ECDSA spec
+
+data ECDSA = ECDSA {
+    ecdsa_r :: !Integer
+  , ecdsa_s :: !Integer
+  }
+  deriving (Eq, Show, Generic)
+
 -- XX handle low-s
-sign :: BS.ByteString -> Integer -> Integer -> (Integer, Integer)
-sign (modQ . bits2int -> h) k x =
-  let kg = mul _CURVE_G k
-      Affine (modQ -> r) _ = affine kg
-      s = case modinv k (fi _CURVE_Q) of
-        Nothing   -> error "ppad-secp256k1 (sign): bad k value"
-        Just kinv -> modQ (modQ (h + modQ (x * r)) * kinv)
-  in  if   r == 0
-      then error "ppad-secp256k1 (sign): <negligible probability outcome>"
-      else (r, s)
 
--- RFC6979 sec 2.4
-gen_k :: BS.ByteString -> Integer -> Integer
-gen_k m x = runST $ do
-    let entropy = int2octets x
-        nonce   = bits2octets (SHA256.hash m)
-    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
-    loop drbg
-  where
-    qlen = fi _CURVE_Q_BITS -- RFC6979 notation
-    loop drbg = do
-      bytes <- DRBG.gen mempty qlen drbg
-      let !can = bits2int bytes
-      if   can >= _CURVE_Q
-      then loop drbg
-      else pure can
-
-gen_k' :: BS.ByteString -> Integer -> Integer
-gen_k' h x = runST $ do
+sign :: BS.ByteString -> Integer -> ECDSA
+sign (SHA256.hash -> h) x = runST $ do
+    -- RFC6979 sec 3.3a
     let entropy = int2octets x
         nonce   = bits2octets h
     drbg <- DRBG.new SHA256.hmac entropy nonce mempty
-    loop drbg
+    -- RFC6979 sec 2.4
+    sign_loop drbg
   where
-    qlen = fi _CURVE_Q_BITS -- RFC6979 notation
-    loop drbg = do
-      bytes <- DRBG.gen mempty qlen drbg
-      let !can = bits2int bytes
-      if   can >= _CURVE_Q
-      then loop drbg
-      else pure can
+    h_modQ  = modQ (bits2int h)
+
+    sign_loop g = do
+      k <- gen_k g
+      let kg = mul _CURVE_G k
+          Affine (modQ -> r) _ = affine kg
+          s = case modinv k (fi _CURVE_Q) of
+            Nothing   -> error "ppad-secp256k1 (sign): bad k value"
+            Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
+      if   r == 0 -- negligible probability
+      then sign_loop g
+      else pure (ECDSA r s)
+
+-- RFC6979 sec 3.3b
+gen_k :: DRBG.DRBG s -> ST s Integer
+gen_k g = loop g where
+  loop drbg = do
+    bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
+    let !can = bits2int bytes
+    if   can >= _CURVE_Q
+    then loop drbg
+    else pure can
+{-# INLINE gen_k #-}
 
 -- XX test
 
