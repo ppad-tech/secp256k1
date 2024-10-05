@@ -29,6 +29,7 @@ library
       base
     , base16-bytestring
     , bytestring
+    , ppad-hmac-drbg
     , ppad-sha256
 
 test-suite secp256k1-tests
