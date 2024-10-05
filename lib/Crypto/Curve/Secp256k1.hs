@@ -10,6 +10,8 @@ module Crypto.Curve.Secp256k1 where
 
 import Control.Monad (when)
 import Control.Monad.ST
+import qualified Crypto.DRBG.HMAC as DRBG
+import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import Data.Int (Int64)
@@ -91,20 +93,20 @@ _CURVE_P :: Integer
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
 -- secp256k1 group order
-_CURVE_N :: Integer
-_CURVE_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+_CURVE_Q :: Integer
+_CURVE_Q = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 -- bitlength of group order
 --
--- = smallest integer such that _CURVE_N < 2 ^ _CURVE_N_BITS
-_CURVE_N_BITS :: Int64
-_CURVE_N_BITS = 256
+-- = smallest integer such that _CURVE_Q < 2 ^ _CURVE_Q_BITS
+_CURVE_Q_BITS :: Int64
+_CURVE_Q_BITS = 256
 
--- bytelength of _CURVE_N
+-- bytelength of _CURVE_Q
 --
--- = _CURVE_N_BITS / 8
-_CURVE_N_BYTES :: Int64
-_CURVE_N_BYTES = 32
+-- = _CURVE_Q_BITS / 8
+_CURVE_Q_BYTES :: Int64
+_CURVE_Q_BYTES = 32
 
 -- secp256k1 short weierstrass form, /a/ coefficient
 _CURVE_A :: Integer
@@ -137,8 +139,8 @@ modP :: Integer -> Integer
 modP a = I.integerMod a _CURVE_P
 
 -- | Division modulo secp256k1 group order.
-modN :: Integer -> Integer
-modN a = I.integerMod a _CURVE_N
+modQ :: Integer -> Integer
+modQ a = I.integerMod a _CURVE_Q
 
 -- | Is field element?
 fe :: Integer -> Bool
@@ -146,7 +148,7 @@ fe n = 0 < n && n < _CURVE_P
 
 -- | Is group element?
 ge :: Integer -> Bool
-ge n = 0 < n && n < _CURVE_N
+ge n = 0 < n && n < _CURVE_Q
 
 -- | Square root (Shanks-Tonelli) modulo secp256k1 field prime.
 --
@@ -395,7 +397,7 @@ parse (B16.decode -> ebs) = case ebs of
   Right bs -> case BS.uncons bs of
     Nothing -> Nothing
     Just (fi -> h, t) ->
-      let (roll -> x, etc) = BS.splitAt (fi _CURVE_N_BYTES) t
+      let (roll -> x, etc) = BS.splitAt (fi _CURVE_Q_BYTES) t
           len = BS.length bs
       in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
           then if   not (fe x)
@@ -410,7 +412,7 @@ parse (B16.decode -> ebs) = case ebs of
                    else Projective x y 1
           else
                if   len == 65 && h == 0x04            -- uncompressed
-               then let (roll -> y, _) = BS.splitAt (fi _CURVE_N_BYTES) etc
+               then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
                         p = Projective x y 1
                     in  if   valid p
                         then Just p
@@ -435,37 +437,70 @@ unroll i = case i of
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
   let (fi -> blen) = BS.length bs * 8
-      (fi -> qlen) = _CURVE_N_BITS -- RFC6979 notation
+      (fi -> qlen) = _CURVE_Q_BITS -- RFC6979 notation
       del = blen - qlen
   in  if   del > 0
       then roll bs `I.integerShiftR` del
       else roll bs
 
+-- XX think this shouldn't be padded as it is
+
 -- RFC6979
 int2octets :: Integer -> BS.ByteString
 int2octets i = pad (unroll i) where
   pad !bs
-    | BS.length bs < fi _CURVE_N_BYTES = pad (BS.cons 0 bs)
+    | BS.length bs < fi _CURVE_Q_BYTES = pad (BS.cons 0 bs)
     | otherwise = bs
 
 -- RFC6979
 bits2octets :: BS.ByteString -> BS.ByteString
 bits2octets bs =
   let z1 = bits2int bs
-      z2 = modN z1
+      z2 = modQ z1
   in  int2octets z2
 
 -- XX handle low-s
 sign :: BS.ByteString -> Integer -> Integer -> (Integer, Integer)
-sign (modN . bits2int -> h) k x =
+sign (modQ . bits2int -> h) k x =
   let kg = mul _CURVE_G k
-      Affine (modN -> r) _ = affine kg
-      s = case modinv k (fi _CURVE_N) of
+      Affine (modQ -> r) _ = affine kg
+      s = case modinv k (fi _CURVE_Q) of
         Nothing   -> error "ppad-secp256k1 (sign): bad k value"
-        Just kinv -> modN (modN (h + modN (x * r)) * kinv)
+        Just kinv -> modQ (modQ (h + modQ (x * r)) * kinv)
   in  if   r == 0
       then error "ppad-secp256k1 (sign): <negligible probability outcome>"
       else (r, s)
+
+-- RFC6979 sec 2.4
+gen_k :: BS.ByteString -> Integer -> Integer
+gen_k m x = runST $ do
+    let entropy = int2octets x
+        nonce   = bits2octets (SHA256.hash m)
+    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
+    loop drbg
+  where
+    qlen = fi _CURVE_Q_BITS -- RFC6979 notation
+    loop drbg = do
+      bytes <- DRBG.gen mempty qlen drbg
+      let !can = bits2int bytes
+      if   can >= _CURVE_Q
+      then loop drbg
+      else pure can
+
+gen_k' :: BS.ByteString -> Integer -> Integer
+gen_k' h x = runST $ do
+    let entropy = int2octets x
+        nonce   = bits2octets h
+    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
+    loop drbg
+  where
+    qlen = fi _CURVE_Q_BITS -- RFC6979 notation
+    loop drbg = do
+      bytes <- DRBG.gen mempty qlen drbg
+      let !can = bits2int bytes
+      if   can >= _CURVE_Q
+      then loop drbg
+      else pure can
 
 -- XX test
 
