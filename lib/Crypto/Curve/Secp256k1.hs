@@ -12,6 +12,7 @@ import Control.Monad (when)
 import Control.Monad.ST
 import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
+import qualified Data.Bits as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import Data.Int (Int64)
@@ -435,6 +436,9 @@ unroll i = case i of
     step 0 = Nothing
     step m = Just (fi m, m `I.integerShiftR` 8)
 
+-- ecdsa ----------------------------------------------------------------------
+-- see https://www.rfc-editor.org/rfc/rfc6979
+
 -- RFC6979 2.3.2
 bits2int :: BS.ByteString -> Integer
 bits2int bs =
@@ -459,9 +463,6 @@ bits2octets bs =
       z2 = modQ z1
   in  int2octets z2
 
--- ecdsa ----------------------------------------------------------------------
--- see https://www.rfc-editor.org/rfc/rfc6979
-
 data ECDSA = ECDSA {
     ecdsa_r :: !Integer
   , ecdsa_s :: !Integer
@@ -470,8 +471,38 @@ data ECDSA = ECDSA {
 
 -- XX handle low-s
 
-sign :: BS.ByteString -> Integer -> ECDSA
-sign (SHA256.hash -> h) x = runST $ do
+data SigType =
+    LowS
+  | Unrestricted
+  deriving Show
+
+
+-- | Produce an ECDSA signature for the provided message, using the
+--   provided private key.
+--
+--  'sign' produces a "low-s" signature, as is commonly required
+--  in applications. If you need a generic ECDSA signature, use
+--  'sign_unrestricted'.
+sign
+  :: Integer
+  -> BS.ByteString
+  -> ECDSA
+sign = _sign LowS
+
+-- | Produce an ECDSA signature for the provided message, using the
+--   provided private key.
+--
+--  'sign_unrestricted' produces an unrestricted ECDSA signature, which is
+--  less common in applications. If you need a conventional "low-S" signature,
+--  use 'sign'.
+sign_unrestricted
+  :: Integer
+  -> BS.ByteString
+  -> ECDSA
+sign_unrestricted = _sign Unrestricted
+
+_sign :: SigType -> Integer -> BS.ByteString -> ECDSA
+_sign ty x (SHA256.hash -> h) = runST $ do
     -- RFC6979 sec 3.3a
     let entropy = int2octets x
         nonce   = bits2octets h
@@ -490,7 +521,10 @@ sign (SHA256.hash -> h) x = runST $ do
             Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
       if   r == 0 -- negligible probability
       then sign_loop g
-      else pure (ECDSA r s)
+      else let sig = ECDSA r s
+           in  case ty of
+                 Unrestricted -> pure sig
+                 LowS -> pure (low sig)
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer
@@ -502,6 +536,14 @@ gen_k g = loop g where
     then loop drbg
     else pure can
 {-# INLINE gen_k #-}
+
+-- Convert an ECDSA signature to low-S form.
+low :: ECDSA -> ECDSA
+low (ECDSA r s) = ECDSA r ms where
+  ms
+    | s > B.unsafeShiftR _CURVE_Q 1 = modQ (negate s)
+    | otherwise = s
+{-# INLINE low #-}
 
 -- XX test
 
