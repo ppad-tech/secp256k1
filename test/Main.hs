@@ -12,34 +12,34 @@ main = defaultMain units
 
 units :: TestTree
 units = testGroup "unit tests" [
-    parse_tests
+    parse_point_tests
   , add_tests
   , dub_tests
   ]
 
-parse_tests :: TestTree
-parse_tests = testGroup "parse tests" [
-    parse_test_p
-  , parse_test_q
-  , parse_test_r
+parse_point_tests :: TestTree
+parse_point_tests = testGroup "parse_point tests" [
+    parse_point_test_p
+  , parse_point_test_q
+  , parse_point_test_r
   ]
 
 render :: Show a => a -> String
 render = filter (`notElem` ("\"" :: String)) . show
 
 -- XX replace these with something non-stupid
-parse_test_p :: TestTree
-parse_test_p = testCase (render p_hex) $ case parse p_hex of
+parse_point_test_p :: TestTree
+parse_point_test_p = testCase (render p_hex) $ case parse_point p_hex of
   Nothing -> assertFailure "bad parse"
   Just p  -> assertEqual mempty p_pro p
 
-parse_test_q :: TestTree
-parse_test_q = testCase (render q_hex) $ case parse q_hex of
+parse_point_test_q :: TestTree
+parse_point_test_q = testCase (render q_hex) $ case parse_point q_hex of
   Nothing -> assertFailure "bad parse"
   Just q  -> assertEqual mempty q_pro q
 
-parse_test_r :: TestTree
-parse_test_r = testCase (render r_hex) $ case parse r_hex of
+parse_point_test_r :: TestTree
+parse_point_test_r = testCase (render r_hex) $ case parse_point r_hex of
   Nothing -> assertFailure "bad parse"
   Just r  -> assertEqual mempty r_pro r
 
