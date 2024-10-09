@@ -1,53 +1,143 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module Wycheproof where
+module Wycheproof (
+    Wycheproof(..)
+  , EcdsaTestGroup(..)
+  , PublicKey(..)
+  , EcdsaVerifyTest(..)
+
+  , parse_der_sig
+  , toProjective
+  , toEcdsa
+  ) where
 
 import Crypto.Curve.Secp256k1
+import Data.Aeson ((.:))
+import qualified Data.Aeson as A
+import qualified Data.Attoparsec.ByteString as AT
 import qualified Data.Bits as B
-import qualified Data.Attoparsec.ByteString as A
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
 
-parse_DER :: A.Parser ECDSA
-parse_DER = do
-  _ <- A.word8 0x30
-  _ <- A.takeTill (== 0x02)
-  _ <- A.word8 0x02
-  r_len <- fmap fi A.anyWord8
-  bs_r <- A.take r_len
-  _ <- A.word8 0x02
-  s_len <- fmap fi A.anyWord8
-  bs_s <- A.take s_len
-  let r = fi (parse_integer_be bs_r)
-      s = fi (parse_integer_be bs_s)
-  pure (ECDSA r s)
+parse_der_sig :: AT.Parser ECDSA
+parse_der_sig = do
+    _ <- AT.word8 0x30
+    len <- fmap fi AT.anyWord8
+    content <- AT.take len
+    etc <- AT.takeByteString
+    if   BS.length content /= len || etc /= mempty
+    then fail "invalid content"
+    else case AT.parseOnly (meat len) content of
+      Left _  -> fail "invalid content"
+      Right v -> pure v
+  where
+    meat len = do
+      (lr, bs_r) <- parseAsnInt
+      (ls, bs_s) <- parseAsnInt
+      let r = fi (roll bs_r)
+          s = fi (roll bs_s)
+          checks = lr + ls == len
+      rest <- AT.takeByteString
+      if   rest == mempty && checks
+      then pure (ECDSA r s)
+      else fail "input remaining or length mismatch"
 
--- dumb integer parser
-parse_integer_be :: BS.ByteString -> Integer
-parse_integer_be = BS.foldl' alg 0 where
-  alg !acc b = B.shiftL acc 8 + fromIntegral b
-{-# INLINE parse_integer_be #-}
+parseAsnInt :: AT.Parser (Int, BS.ByteString)
+parseAsnInt = do
+  _       <- AT.word8 0x02
+  len     <- fmap fi AT.anyWord8
+  content <- AT.take len
+  if   BS.length content /= len
+  then fail "invalid length"
+  else if   len == 1
+       then pure (len + 2, content) -- + tag byt + len byt
+       else case BS.uncons content of
+         Nothing -> fail "invalid content"
+         Just (h0, t0)
+           | B.testBit h0 7 -> fail "negative value"
+           | otherwise -> case BS.uncons t0 of
+               Nothing -> fail "invalid content"
+               Just (h1, _)
+                 | h0 == 0x00 && not (B.testBit h1 7) -> fail "invalid padding"
+                 | otherwise -> case BS.unsnoc content of
+                     Nothing -> fail "invalid content"
+                     Just (_, tn)
+                       | tn == 0x00 -> fail "invalid padding"
+                       | otherwise  -> pure (len + 2, content)
 
--- XX delete me when done
+data Wycheproof = Wycheproof {
+    wp_algorithm        :: !T.Text
+  , wp_generatorVersion :: !T.Text
+  , wp_numberOfTests    :: !Int
+  , wp_testGroups       :: ![EcdsaTestGroup]
+  } deriving Show
 
-test_pub :: BS.ByteString
-test_pub = "04782c8ed17e3b2a783b5464f33b09652a71c678e05ec51e84e2bcfc663a3de963af9acb4280b8c7f7c42f4ef9aba6245ec1ec1712fd38a0fa96418d8cd6aa6152"
+instance A.FromJSON Wycheproof where
+  parseJSON = A.withObject "Wycheproof" $ \m -> Wycheproof
+    <$> m .: "algorithm"
+    <*> m .: "generatorVersion"
+    <*> m .: "numberOfTests"
+    <*> m .: "testGroups"
 
-pub =
-  let Just p = parse_point test_pub
-  in  p
+data EcdsaTestGroup = EcdsaTestGroup {
+    etg_type      :: !T.Text
+  , etg_publicKey :: !PublicKey
+  , etg_sha       :: !T.Text
+  , etg_tests     :: ![EcdsaVerifyTest]
+  } deriving Show
 
-test_msg :: BS.ByteString
-test_msg = mempty
+instance A.FromJSON EcdsaTestGroup where
+  parseJSON = A.withObject "EcdsaTestGroup" $ \m -> EcdsaTestGroup
+    <$> m .: "type"
+    <*> m .: "publicKey"
+    <*> m .: "sha"
+    <*> m .: "tests"
 
-test_sig :: BS.ByteString
-test_sig = "3046022100f80ae4f96cdbc9d853f83d47aae225bf407d51c56b7776cd67d0dc195d99a9dc022100b303e26be1f73465315221f0b331528807a1a9b6eb068ede6eebeaaa49af8a36"
+data PublicKey = PublicKey {
+    pk_type         :: !T.Text
+  , pk_curve        :: !T.Text
+  , pk_keySize      :: !Int
+  , pk_uncompressed :: !Projective
+  } deriving Show
 
-sig =
-  let Right s = A.parseOnly parse_DER (B16.decodeLenient test_sig)
-  in  s
+toProjective :: T.Text -> Projective
+toProjective (TE.encodeUtf8 -> bs) = case parse_point bs of
+  Nothing -> error "wycheproof: couldn't parse pubkey"
+  Just p -> p
+
+instance A.FromJSON PublicKey where
+  parseJSON = A.withObject "PublicKey" $ \m -> PublicKey
+    <$> m .: "type"
+    <*> m .: "curve"
+    <*> m .: "keySize"
+    <*> fmap toProjective (m .: "uncompressed")
+
+toEcdsa :: T.Text -> Either String ECDSA
+toEcdsa (B16.decodeLenient . TE.encodeUtf8 -> bs) =
+  -- AT.parseOnly parse_der_len bs
+  AT.parseOnly parse_der_sig bs
+
+data EcdsaVerifyTest = EcdsaVerifyTest {
+    t_tcId    :: !Int
+  , t_comment :: !T.Text
+  , t_msg     :: !T.Text
+  , t_sig     :: !T.Text -- XX invalid sigs prevent 'fmap toEcdsa'
+  , t_result  :: !T.Text
+  } deriving Show
+
+instance A.FromJSON EcdsaVerifyTest where
+  parseJSON = A.withObject "EcdsaVerifyTest" $ \m -> EcdsaVerifyTest
+    <$> m .: "tcId"
+    <*> m .: "comment"
+    <*> m .: "msg"
+    <*> m .: "sig"
+    <*> m .: "result"
+

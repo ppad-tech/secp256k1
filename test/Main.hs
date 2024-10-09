@@ -1,25 +1,62 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-} -- XX delete me
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
+import Control.Monad (when)
+import Crypto.Curve.Secp256k1
 import qualified Data.Bits as B
-import qualified Data.Attoparsec.ByteString as A
+import qualified Data.Aeson as A
+import qualified Data.Attoparsec.ByteString as AT
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
-import Crypto.Curve.Secp256k1
 import Test.Tasty
 import Test.Tasty.HUnit
+import qualified Data.Text.IO as TIO
+import qualified Data.Text.Encoding as TE
+import qualified Wycheproof as W
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
 
-test_sig :: BS.ByteString
-test_sig = "3046022100f80ae4f96cdbc9d853f83d47aae225bf407d51c56b7776cd67d0dc195d99a9dc022100b303e26be1f73465315221f0b331528807a1a9b6eb068ede6eebeaaa49af8a36"
-
 main :: IO ()
-main = defaultMain units
+main = do
+  wycheproof_ecdsa_sha256 <- TIO.readFile "etc/ecdsa_secp256k1_sha256_test.json"
+  case A.decodeStrictText wycheproof_ecdsa_sha256 :: Maybe W.Wycheproof of
+    Nothing -> error "couldn't parse wycheproof vectors"
+    Just w  -> defaultMain $ testGroup "ppad-secp256k1" [
+        units
+      , wycheproof_tests w
+      ]
+
+wycheproof_tests :: W.Wycheproof -> TestTree
+wycheproof_tests W.Wycheproof {..} =
+  testGroup "wycheproof vectors (ecdsa, sha256)" $
+    fmap execute_group wp_testGroups
+
+execute_group :: W.EcdsaTestGroup -> TestTree
+execute_group W.EcdsaTestGroup {..} =
+    testGroup msg (fmap (execute pk_uncompressed) etg_tests)
+  where
+    msg = mempty
+    W.PublicKey {..} = etg_publicKey
+
+execute :: Projective -> W.EcdsaVerifyTest -> TestTree
+execute pub W.EcdsaVerifyTest {..} = testCase report $ do
+    let msg = B16.decodeLenient (TE.encodeUtf8 t_msg)
+        sig = W.toEcdsa t_sig
+    case sig of
+      Left _  -> assertBool mempty (t_result == "invalid")
+      Right s -> do
+        let ver = verify msg pub s
+        if   t_result == "invalid"
+        then assertBool mempty (not ver)
+        else assertBool mempty ver
+  where
+    report = "test " <> show t_tcId
 
 units :: TestTree
 units = testGroup "unit tests" [

@@ -52,6 +52,7 @@ test-suite secp256k1-tests
     , ppad-secp256k1
     , tasty
     , tasty-hunit
+    , text
 
 benchmark secp256k1-bench
   type:                exitcode-stdio-1.0

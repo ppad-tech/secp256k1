@@ -19,6 +19,8 @@ module Crypto.Curve.Secp256k1 (
   , mul_safe
 
   , parse_point
+  , roll   -- XX don't export
+  , unroll -- XX don't export
 
   , ECDSA(..)
   , sign
@@ -572,7 +574,7 @@ low (ECDSA r s) = ECDSA r ms where
 -- SEC1-v2 4.1.4
 verify :: BS.ByteString -> Projective -> ECDSA -> Bool
 verify m p (ECDSA r s)
-    | not (fe r) || not (fe s) = False
+    | not (ge r) || not (ge s) = False
     | otherwise =
         let e     = modQ (bits2int h)
             s_inv = case modinv s (fi _CURVE_Q) of
