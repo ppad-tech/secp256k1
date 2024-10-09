@@ -22,6 +22,8 @@ import GHC.Natural
 import qualified GHC.Num.Integer as I
 import Prelude hiding (mod)
 
+-- XX RFC 6979 uses Q whereas SEC1-v2 uses N for group order
+
 -- keystroke savers & other utilities -----------------------------------------
 
 fi :: (Integral a, Num b) => a -> b
@@ -34,6 +36,7 @@ modinv :: Integer -> Natural -> Maybe Integer
 modinv a m = case I.integerRecipMod# a m of
   (# fi -> n | #) -> Just $! n
   (# | _ #) -> Nothing
+{-# INLINE modinv #-}
 
 -- coordinate systems ---------------------------------------------------------
 
@@ -93,6 +96,8 @@ valid p = case affine p of
 _CURVE_P :: Integer
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
+-- XX can i make this abstract and use SPECIALIZE pragmas?
+
 -- secp256k1 group order
 _CURVE_Q :: Integer
 _CURVE_Q = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -138,10 +143,12 @@ weierstrass x = modP (modP (x * x) * x + _CURVE_B)
 -- | Division modulo secp256k1 field prime.
 modP :: Integer -> Integer
 modP a = I.integerMod a _CURVE_P
+{-# INLINE modP #-}
 
 -- | Division modulo secp256k1 group order.
 modQ :: Integer -> Integer
 modQ a = I.integerMod a _CURVE_Q
+{-# INLINE modQ #-}
 
 -- | Is field element?
 fe :: Integer -> Bool
@@ -469,13 +476,10 @@ data ECDSA = ECDSA {
   }
   deriving (Eq, Show, Generic)
 
--- XX handle low-s
-
 data SigType =
     LowS
   | Unrestricted
   deriving Show
-
 
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
@@ -493,7 +497,7 @@ sign = _sign LowS
 --   provided private key.
 --
 --  'sign_unrestricted' produces an unrestricted ECDSA signature, which is
---  less common in applications. If you need a conventional "low-S" signature,
+--  less common in applications. If you need a conventional "low-s" signature,
 --  use 'sign'.
 sign_unrestricted
   :: Integer
@@ -521,7 +525,7 @@ _sign ty x (SHA256.hash -> h) = runST $ do
             Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
       if   r == 0 -- negligible probability
       then sign_loop g
-      else let sig = ECDSA r s
+      else let !sig = ECDSA r s
            in  case ty of
                  Unrestricted -> pure sig
                  LowS -> pure (low sig)
@@ -544,6 +548,25 @@ low (ECDSA r s) = ECDSA r ms where
     | s > B.unsafeShiftR _CURVE_Q 1 = modQ (negate s)
     | otherwise = s
 {-# INLINE low #-}
+
+-- SEC1-v2 4.1.4
+verify :: BS.ByteString -> Projective -> ECDSA -> Bool
+verify m p (ECDSA r s)
+    | not (fe r) || not (fe s) = False
+    | otherwise =
+        let e     = modQ (bits2int h)
+            s_inv = case modinv s (fi _CURVE_Q) of
+              Nothing -> error "ppad-secp256k1 (verify): no inverse"
+              Just si -> si
+            u1    = modQ (e * s_inv)
+            u2    = modQ (r * s_inv)
+            capR  = add (mul _CURVE_G u1) (mul p u2)
+        in  if   capR == _ZERO
+            then False
+            else let Affine (modQ -> v) _ = affine capR
+                 in  v == r
+  where
+    h = SHA256.hash m
 
 -- XX test
 
