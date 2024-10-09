@@ -6,7 +6,25 @@
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Crypto.Curve.Secp256k1 where
+module Crypto.Curve.Secp256k1 (
+    Affine(..)
+  , Projective(..)
+  , affine
+  , projective
+
+  , neg
+  , add
+  , double
+  , mul
+  , mul_safe
+
+  , parse_point
+
+  , ECDSA(..)
+  , sign
+  , sign_unrestricted
+  , verify
+  ) where
 
 import Control.Monad (when)
 import Control.Monad.ST

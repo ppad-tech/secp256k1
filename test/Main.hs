@@ -1,11 +1,22 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
+import qualified Data.Bits as B
+import qualified Data.Attoparsec.ByteString as A
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as B16
 import Crypto.Curve.Secp256k1
 import Test.Tasty
 import Test.Tasty.HUnit
+
+fi :: (Integral a, Num b) => a -> b
+fi = fromIntegral
+{-# INLINE fi #-}
+
+test_sig :: BS.ByteString
+test_sig = "3046022100f80ae4f96cdbc9d853f83d47aae225bf407d51c56b7776cd67d0dc195d99a9dc022100b303e26be1f73465315221f0b331528807a1a9b6eb068ede6eebeaaa49af8a36"
 
 main :: IO ()
 main = defaultMain units
