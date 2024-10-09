@@ -24,17 +24,24 @@ fi = fromIntegral
 
 main :: IO ()
 main = do
-  wycheproof_ecdsa_sha256 <- TIO.readFile "etc/ecdsa_secp256k1_sha256_test.json"
-  case A.decodeStrictText wycheproof_ecdsa_sha256 :: Maybe W.Wycheproof of
+  wp_ecdsa_sha256 <- TIO.readFile "etc/ecdsa_secp256k1_sha256_test.json"
+  wp_ecdsa_sha256_bitcoin <- TIO.readFile
+    "etc/ecdsa_secp256k1_sha256_bitcoin_test.json"
+  let pair = do
+        wp0 <- A.decodeStrictText wp_ecdsa_sha256 :: Maybe W.Wycheproof
+        wp1 <- A.decodeStrictText wp_ecdsa_sha256_bitcoin :: Maybe W.Wycheproof
+        pure (wp0, wp1)
+  case pair of
     Nothing -> error "couldn't parse wycheproof vectors"
-    Just w  -> defaultMain $ testGroup "ppad-secp256k1" [
+    Just (w0, w1) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
-      , wycheproof_tests w
+      , wycheproof_tests "(ecdsa, sha256)" w0
+      -- , wycheproof_tests "(ecdsa, sha256, bitcoin)" w1
       ]
 
-wycheproof_tests :: W.Wycheproof -> TestTree
-wycheproof_tests W.Wycheproof {..} =
-  testGroup "wycheproof vectors (ecdsa, sha256)" $
+wycheproof_tests :: String -> W.Wycheproof -> TestTree
+wycheproof_tests msg W.Wycheproof {..} =
+  testGroup ("wycheproof vectors " <> msg) $
     fmap execute_group wp_testGroups
 
 execute_group :: W.EcdsaTestGroup -> TestTree
