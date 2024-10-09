@@ -124,7 +124,8 @@ _CURVE_B = 7
 
 -- secp256k1 generator
 --
--- = parse "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
+-- = parse_point
+--     "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
 _CURVE_G :: Projective
 _CURVE_G = Projective x y 1 where
   x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
@@ -401,8 +402,8 @@ mul_safe p n
 -- parsing --------------------------------------------------------------------
 
 -- | Parse hex-encoded compressed or uncompressed point.
-parse :: BS.ByteString -> Maybe Projective
-parse (B16.decode -> ebs) = case ebs of
+parse_point :: BS.ByteString -> Maybe Projective
+parse_point (B16.decode -> ebs) = case ebs of
   Left _   -> Nothing
   Right bs -> case BS.uncons bs of
     Nothing -> Nothing
@@ -522,6 +523,7 @@ _sign ty x (SHA256.hash -> h) = runST $ do
           Affine (modQ -> r) _ = affine kg
           s = case modinv k (fi _CURVE_Q) of
             Nothing   -> error "ppad-secp256k1 (sign): bad k value"
+            -- XX check timing implications of mod division of secret by Q
             Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
       if   r == 0 -- negligible probability
       then sign_loop g
