@@ -42,7 +42,9 @@ test-suite secp256k1-tests
     -rtsopts -Wall
 
   build-depends:
-      base
+      aeson
+    , attoparsec
+    , base
     , base16-bytestring
     , bytestring
     , ppad-secp256k1
