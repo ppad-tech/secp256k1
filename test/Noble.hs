@@ -7,6 +7,7 @@ module Noble (
   , execute_ecdsa
   ) where
 
+import Control.Exception
 import Crypto.Curve.Secp256k1
 import Data.Aeson ((.:))
 import qualified Data.Aeson as A
@@ -16,7 +17,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified GHC.Num.Integer as I
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertEqual, testCase)
+import Test.Tasty.HUnit (assertEqual, assertBool, assertFailure, testCase)
 
 data Ecdsa = Ecdsa {
     ec_valid   :: ![(Int, ValidTest)]
@@ -25,8 +26,12 @@ data Ecdsa = Ecdsa {
 
 execute_ecdsa :: Ecdsa -> TestTree
 execute_ecdsa Ecdsa {..} = testGroup "noble_ecdsa" [
-    testGroup "valid" (fmap execute_valid ec_valid)
-  ]
+      testGroup "valid" (fmap execute_valid ec_valid)
+    , testGroup "invalid (sign)" (fmap execute_invalid_sign iv_sign)
+    , testGroup "invalid (verify)" (fmap execute_invalid_verify iv_verify)
+    ]
+  where
+    InvalidTest {..} = ec_invalid
 
 execute_valid :: (Int, ValidTest) -> TestTree
 execute_valid (label, ValidTest {..}) =
@@ -36,6 +41,29 @@ execute_valid (label, ValidTest {..}) =
         pec = parse_compact vt_signature
         sig = _sign_no_hash x msg
     assertEqual mempty pec sig
+
+execute_invalid_sign :: (Int, InvalidSignTest) -> TestTree
+execute_invalid_sign (label, InvalidSignTest {..}) =
+    testCase ("noble-secp256k1, invalid sign (" <> show label <> ")") $ do
+      let x   = ivs_d
+          m   = ivs_m
+      err <- catch (pure (_sign_no_hash x m) >> pure False) handler
+      if   err
+      then assertFailure "expected error not caught"
+      else pure ()
+  where
+    handler :: ErrorCall -> IO Bool
+    handler _ = pure True
+
+execute_invalid_verify :: (Int, InvalidVerifyTest) -> TestTree
+execute_invalid_verify (label, InvalidVerifyTest {..}) =
+  testCase ("noble-secp256k1, invalid verify (" <> show label <> ")") $
+    case parse_point ivv_Q of
+      Nothing -> assertBool "no parse" True
+      Just pub -> do
+        let sig = parse_compact ivv_signature
+            ver = verify ivv_m pub sig
+        assertBool mempty (not ver)
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
@@ -77,14 +105,14 @@ parse_compact bs =
   in  ECDSA r s
 
 data InvalidTest = InvalidTest {
-    iv_sign   :: ![InvalidSignTest]
-  , iv_verify :: ![InvalidVerifyTest]
+    iv_sign   :: ![(Int, InvalidSignTest)]
+  , iv_verify :: ![(Int, InvalidVerifyTest)]
   } deriving Show
 
 instance A.FromJSON InvalidTest where
   parseJSON = A.withObject "InvalidTest" $ \m -> InvalidTest
-    <$> m .: "sign"
-    <*> m .: "verify"
+    <$> fmap (zip [0..]) (m .: "sign")
+    <*> fmap (zip [0..]) (m .: "verify")
 
 data InvalidSignTest = InvalidSignTest {
     ivs_d           :: !Integer
@@ -97,14 +125,14 @@ instance A.FromJSON InvalidSignTest where
     <*> fmap toBS (m .: "m")
 
 data InvalidVerifyTest = InvalidVerifyTest {
-    ivv_Q           :: !T.Text        -- XX check noble pubkey encoding
+    ivv_Q           :: !BS.ByteString
   , ivv_m           :: !BS.ByteString
-  , ivv_signature   :: !BS.ByteString -- XX to sig (from compact?)
+  , ivv_signature   :: !BS.ByteString
   } deriving Show
 
 instance A.FromJSON InvalidVerifyTest where
   parseJSON = A.withObject "InvalidVerifyTest" $ \m -> InvalidVerifyTest
-    <$> m .: "Q"
+    <$> fmap TE.encodeUtf8 (m .: "Q")
     <*> fmap toBS (m .: "m")
     <*> fmap toBS (m .: "signature")
 
