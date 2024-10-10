@@ -7,26 +7,23 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Crypto.Curve.Secp256k1 (
-    _CURVE_G
-  , _ZERO
-  , _CURVE_A
-  , _CURVE_B
-  , _CURVE_P
-  , _CURVE_Q
-
-  , Affine(..)
+  -- * Coordinate systems and transformations
+    Affine(..)
   , Projective(..)
   , affine
   , projective
 
+  -- * Elliptic curve group operations
   , neg
   , add
   , double
   , mul
   , mul_safe
 
+  -- * Point parsing
   , parse_point
 
+  -- * ECDSA
   , ECDSA(..)
   , SigType(..)
   , sign
@@ -44,7 +41,7 @@ import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Base16 as B16
+import qualified Data.ByteString.Base16 as B16 -- XX kill this dep
 import Data.Int (Int64)
 import Data.STRef
 import GHC.Generics
@@ -452,7 +449,7 @@ parse_point (B16.decode -> ebs) = case ebs of
                    then Projective x (modP (negate y)) 1
                    else Projective x y 1
           else
-               if   len == 65 && h == 0x04            -- uncompressed
+               if   len == 65 && h == 0x04  -- uncompressed
                then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
                         p = Projective x y 1
                     in  if   valid p
@@ -462,14 +459,14 @@ parse_point (B16.decode -> ebs) = case ebs of
 
 -- big-endian bytestring decoding
 roll :: BS.ByteString -> Integer
-roll = BS.foldl' unstep 0 where
-  unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+roll = BS.foldl' alg 0 where
+  alg a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
 unroll i = case i of
     0 -> BS.singleton 0
-    _ -> BS.reverse $ BS.unfoldr step i
+    _ -> BS.reverse $ BS.unfoldr step i -- XX looks slow
   where
     step 0 = Nothing
     step m = Just (fi m, m `I.integerShiftR` 8)
@@ -513,21 +510,12 @@ data SigType =
   | Unrestricted
   deriving Show
 
--- Hash message, or assume already hashed.
+-- Indicates whether to hash the message or assume it has already been
+-- hashed.
 data HashFlag =
     Hash
   | NoHash
   deriving Show
-
--- Produce a "low-s" ECDSA signature for the provided message, using
--- the provided private key.
---
--- Assumes that the message has already been pre-hashed.
---
--- Useful for testing against noble-secp256k1's suite, in which messages
--- have already been hashed.
-_sign_no_hash :: Integer -> BS.ByteString -> ECDSA
-_sign_no_hash = _sign LowS NoHash
 
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
@@ -536,8 +524,8 @@ _sign_no_hash = _sign LowS NoHash
 --   in applications. If you need a generic ECDSA signature, use
 --   'sign_unrestricted'.
 sign
-  :: Integer
-  -> BS.ByteString
+  :: Integer         -- ^ secret key
+  -> BS.ByteString   -- ^ message
   -> ECDSA
 sign = _sign LowS Hash
 
@@ -548,8 +536,8 @@ sign = _sign LowS Hash
 --   is less common in applications. If you need a conventional "low-s"
 --   signature, use 'sign'.
 sign_unrestricted
-  :: Integer
-  -> BS.ByteString
+  :: Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message
   -> ECDSA
 sign_unrestricted = _sign Unrestricted Hash
 
@@ -582,6 +570,19 @@ _sign ty hf x m = runST $ do
     h = case hf of
       Hash -> SHA256.hash m
       NoHash -> m
+
+-- Produce a "low-s" ECDSA signature for the provided message, using
+-- the provided private key.
+--
+-- Assumes that the message has already been pre-hashed.
+--
+-- Useful for testing against noble-secp256k1's suite, in which messages
+-- have already been hashed.
+_sign_no_hash
+  :: Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message digest
+  -> ECDSA
+_sign_no_hash = _sign LowS NoHash
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer

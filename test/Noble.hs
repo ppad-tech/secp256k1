@@ -23,7 +23,6 @@ data Ecdsa = Ecdsa {
   , ec_invalid :: !InvalidTest
   } deriving Show
 
--- XX run noble's invalid suites
 execute_ecdsa :: Ecdsa -> TestTree
 execute_ecdsa Ecdsa {..} = testGroup "noble_ecdsa" [
     testGroup "valid" (fmap execute_valid ec_valid)
