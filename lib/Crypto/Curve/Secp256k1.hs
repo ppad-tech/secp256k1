@@ -573,34 +573,23 @@ low (ECDSA r s) = ECDSA r ms where
 
 -- SEC1-v2 4.1.4
 verify_unrestricted :: BS.ByteString -> Projective -> ECDSA -> Bool
-verify_unrestricted m p (ECDSA r s)
-    | not (ge r) || not (ge s) = False
-    | otherwise =
-        let e     = modQ (bits2int h)
-            s_inv = case modinv s (fi _CURVE_Q) of
-              Nothing -> error "ppad-secp256k1 (verify): no inverse"
-              Just si -> si
-            u1    = modQ (e * s_inv)
-            u2    = modQ (r * s_inv)
-            capR  = add (mul _CURVE_G u1) (mul p u2)
-        in  if   capR == _ZERO
-            then False
-            else let Affine (modQ -> v) _ = affine capR
-                 in  v == r
-  where
-    h = SHA256.hash m
+verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
+  | not (ge r) || not (ge s) = False
+  | otherwise =
+      let e     = modQ (bits2int h)
+          s_inv = case modinv s (fi _CURVE_Q) of
+            Nothing -> error "ppad-secp256k1 (verify): no inverse"
+            Just si -> si
+          u1    = modQ (e * s_inv)
+          u2    = modQ (r * s_inv)
+          capR  = add (mul _CURVE_G u1) (mul p u2)
+      in  if   capR == _ZERO
+          then False
+          else let Affine (modQ -> v) _ = affine capR
+               in  v == r
 
 verify :: BS.ByteString -> Projective -> ECDSA -> Bool
 verify m p sig@(ECDSA _ s)
   | s > B.unsafeShiftR _CURVE_Q 1 = False
   | otherwise = verify_unrestricted m p sig
 
--- -- XX test
---
--- test_h1 :: BS.ByteString
--- test_h1 = B16.decodeLenient
---   "AF2BDBE1AA9B6EC1E2ADE1D694F41FC71A831D0268E9891562113D8A62ADD1BF"
---
--- test_x :: Integer
--- test_x = 0x09A4D6792295A7F730FC3F2B49CBC0F62E862272F
---
