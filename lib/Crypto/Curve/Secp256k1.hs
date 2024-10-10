@@ -505,9 +505,9 @@ data SigType =
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
 --
---  'sign' produces a "low-s" signature, as is commonly required
---  in applications. If you need a generic ECDSA signature, use
---  'sign_unrestricted'.
+--   'sign' produces a "low-s" signature, as is commonly required
+--   in applications. If you need a generic ECDSA signature, use
+--   'sign_unrestricted'.
 sign
   :: Integer
   -> BS.ByteString
@@ -517,9 +517,9 @@ sign = _sign LowS
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
 --
---  'sign_unrestricted' produces an unrestricted ECDSA signature, which is
---  less common in applications. If you need a conventional "low-s" signature,
---  use 'sign'.
+--   'sign_unrestricted' produces an unrestricted ECDSA signature, which
+--   is less common in applications. If you need a conventional "low-s"
+--   signature, use 'sign'.
 sign_unrestricted
   :: Integer
   -> BS.ByteString
@@ -571,9 +571,15 @@ low (ECDSA r s) = ECDSA r ms where
     | otherwise = s
 {-# INLINE low #-}
 
--- SEC1-v2 4.1.4
-verify_unrestricted :: BS.ByteString -> Projective -> ECDSA -> Bool
+-- | Verify an unrestricted ECDSA signature for the provided message and
+--   public key.
+verify_unrestricted
+  :: BS.ByteString -- ^ message
+  -> Projective    -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
 verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
+  -- SEC1-v2 4.1.4
   | not (ge r) || not (ge s) = False
   | otherwise =
       let e     = modQ (bits2int h)
@@ -588,7 +594,13 @@ verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
           else let Affine (modQ -> v) _ = affine capR
                in  v == r
 
-verify :: BS.ByteString -> Projective -> ECDSA -> Bool
+-- | Verify a "low-s" ECDSA signature for the provided message and
+--   public key.
+verify
+  :: BS.ByteString -- ^ message
+  -> Projective    -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
 verify m p sig@(ECDSA _ s)
   | s > B.unsafeShiftR _CURVE_Q 1 = False
   | otherwise = verify_unrestricted m p sig

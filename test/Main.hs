@@ -36,7 +36,7 @@ main = do
     Just (w0, w1) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
       , wycheproof_ecdsa_verify_tests "(ecdsa, sha256)" Unrestricted w0
-      , wycheproof_ecdsa_verify_tests "(ecdsa, sha256, bitcoin)" LowS w1
+      , wycheproof_ecdsa_verify_tests "(ecdsa, sha256, low-s)" LowS w1
       ]
 
 wycheproof_ecdsa_verify_tests :: String -> SigType -> W.Wycheproof -> TestTree
