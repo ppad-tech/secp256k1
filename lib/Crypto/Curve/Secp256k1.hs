@@ -7,7 +7,14 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Crypto.Curve.Secp256k1 (
-    Affine(..)
+    _CURVE_G
+  , _ZERO
+  , _CURVE_A
+  , _CURVE_B
+  , _CURVE_P
+  , _CURVE_Q
+
+  , Affine(..)
   , Projective(..)
   , affine
   , projective
@@ -23,9 +30,12 @@ module Crypto.Curve.Secp256k1 (
   , ECDSA(..)
   , SigType(..)
   , sign
-  , verify
   , sign_unrestricted
+  , verify
   , verify_unrestricted
+
+    -- for testing
+  , _sign_no_hash
   ) where
 
 import Control.Monad (when)
@@ -497,10 +507,27 @@ data ECDSA = ECDSA {
   }
   deriving (Eq, Show, Generic)
 
+-- ECDSA signature type.
 data SigType =
     LowS
   | Unrestricted
   deriving Show
+
+-- Hash message, or assume already hashed.
+data HashFlag =
+    Hash
+  | NoHash
+  deriving Show
+
+-- Produce a "low-s" ECDSA signature for the provided message, using
+-- the provided private key.
+--
+-- Assumes that the message has already been pre-hashed.
+--
+-- Useful for testing against noble-secp256k1's suite, in which messages
+-- have already been hashed.
+_sign_no_hash :: Integer -> BS.ByteString -> ECDSA
+_sign_no_hash = _sign LowS NoHash
 
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
@@ -512,7 +539,7 @@ sign
   :: Integer
   -> BS.ByteString
   -> ECDSA
-sign = _sign LowS
+sign = _sign LowS Hash
 
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
@@ -524,10 +551,10 @@ sign_unrestricted
   :: Integer
   -> BS.ByteString
   -> ECDSA
-sign_unrestricted = _sign Unrestricted
+sign_unrestricted = _sign Unrestricted Hash
 
-_sign :: SigType -> Integer -> BS.ByteString -> ECDSA
-_sign ty x (SHA256.hash -> h) = runST $ do
+_sign :: SigType -> HashFlag -> Integer -> BS.ByteString -> ECDSA
+_sign ty hf x m = runST $ do
     -- RFC6979 sec 3.3a
     let entropy = int2octets x
         nonce   = bits2octets h
@@ -551,6 +578,10 @@ _sign ty x (SHA256.hash -> h) = runST $ do
            in  case ty of
                  Unrestricted -> pure sig
                  LowS -> pure (low sig)
+
+    h = case hf of
+      Hash -> SHA256.hash m
+      NoHash -> m
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer

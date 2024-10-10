@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Wycheproof (
@@ -11,6 +12,9 @@ module Wycheproof (
   , parse_der_sig
   , toProjective
   , toEcdsa
+
+  , execute
+  , execute_group
   ) where
 
 import Crypto.Curve.Secp256k1
@@ -23,6 +27,8 @@ import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified GHC.Num.Integer as I
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
@@ -32,6 +38,29 @@ fi = fromIntegral
 roll :: BS.ByteString -> Integer
 roll = BS.foldl' unstep 0 where
   unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+
+execute_group :: SigType -> EcdsaTestGroup -> TestTree
+execute_group ty EcdsaTestGroup {..} =
+    testGroup msg (fmap (execute ty pk_uncompressed) etg_tests)
+  where
+    msg = mempty
+    PublicKey {..} = etg_publicKey
+
+execute :: SigType -> Projective -> EcdsaVerifyTest -> TestTree
+execute ty pub EcdsaVerifyTest {..} = testCase report $ do
+    let msg = B16.decodeLenient (TE.encodeUtf8 t_msg)
+        sig = toEcdsa t_sig
+    case sig of
+      Left _  -> assertBool mempty (t_result == "invalid")
+      Right s -> do
+        let ver = case ty of
+              LowS -> verify msg pub s
+              Unrestricted -> verify_unrestricted msg pub s
+        if   t_result == "invalid"
+        then assertBool mempty (not ver)
+        else assertBool mempty ver
+  where
+    report = "wycheproof (" <> show ty <> ") " <> show t_tcId
 
 parse_der_sig :: AT.Parser ECDSA
 parse_der_sig = do
@@ -128,14 +157,13 @@ instance A.FromJSON PublicKey where
 
 toEcdsa :: T.Text -> Either String ECDSA
 toEcdsa (B16.decodeLenient . TE.encodeUtf8 -> bs) =
-  -- AT.parseOnly parse_der_len bs
   AT.parseOnly parse_der_sig bs
 
 data EcdsaVerifyTest = EcdsaVerifyTest {
     t_tcId    :: !Int
   , t_comment :: !T.Text
   , t_msg     :: !T.Text
-  , t_sig     :: !T.Text -- XX invalid sigs prevent 'fmap toEcdsa'
+  , t_sig     :: !T.Text
   , t_result  :: !T.Text
   } deriving Show
 

@@ -16,6 +16,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Encoding as TE
+import qualified Noble as N
 import qualified Wycheproof as W
 
 fi :: (Integral a, Num b) => a -> b
@@ -27,45 +28,25 @@ main = do
   wp_ecdsa_sha256 <- TIO.readFile "etc/ecdsa_secp256k1_sha256_test.json"
   wp_ecdsa_sha256_bitcoin <- TIO.readFile
     "etc/ecdsa_secp256k1_sha256_bitcoin_test.json"
-  let pair = do
+  noble_ecdsa <- TIO.readFile "etc/noble_ecdsa.json"
+  let trip = do
         wp0 <- A.decodeStrictText wp_ecdsa_sha256 :: Maybe W.Wycheproof
         wp1 <- A.decodeStrictText wp_ecdsa_sha256_bitcoin :: Maybe W.Wycheproof
-        pure (wp0, wp1)
-  case pair of
+        nob <- A.decodeStrictText noble_ecdsa :: Maybe N.Ecdsa
+        pure (wp0, wp1, nob)
+  case trip of
     Nothing -> error "couldn't parse wycheproof vectors"
-    Just (w0, w1) -> defaultMain $ testGroup "ppad-secp256k1" [
+    Just (w0, w1, no) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
       , wycheproof_ecdsa_verify_tests "(ecdsa, sha256)" Unrestricted w0
       , wycheproof_ecdsa_verify_tests "(ecdsa, sha256, low-s)" LowS w1
+      , N.execute_ecdsa no
       ]
 
 wycheproof_ecdsa_verify_tests :: String -> SigType -> W.Wycheproof -> TestTree
 wycheproof_ecdsa_verify_tests msg ty W.Wycheproof {..} =
   testGroup ("wycheproof vectors " <> msg) $
-    fmap (execute_group ty) wp_testGroups
-
-execute_group :: SigType -> W.EcdsaTestGroup -> TestTree
-execute_group ty W.EcdsaTestGroup {..} =
-    testGroup msg (fmap (execute ty pk_uncompressed) etg_tests)
-  where
-    msg = mempty
-    W.PublicKey {..} = etg_publicKey
-
-execute :: SigType -> Projective -> W.EcdsaVerifyTest -> TestTree
-execute ty pub W.EcdsaVerifyTest {..} = testCase report $ do
-    let msg = B16.decodeLenient (TE.encodeUtf8 t_msg)
-        sig = W.toEcdsa t_sig
-    case sig of
-      Left _  -> assertBool mempty (t_result == "invalid")
-      Right s -> do
-        let ver = case ty of
-              LowS -> verify msg pub s
-              Unrestricted -> verify_unrestricted msg pub s
-        if   t_result == "invalid"
-        then assertBool mempty (not ver)
-        else assertBool mempty ver
-  where
-    report = "test " <> show t_tcId
+    fmap (W.execute_group ty) wp_testGroups
 
 units :: TestTree
 units = testGroup "unit tests" [

@@ -38,7 +38,8 @@ test-suite secp256k1-tests
   hs-source-dirs:      test
   main-is:             Main.hs
   other-modules:
-    Wycheproof
+      Noble
+    , Wycheproof
 
   ghc-options:
     -rtsopts -Wall
