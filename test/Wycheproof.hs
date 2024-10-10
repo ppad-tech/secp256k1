@@ -5,15 +5,6 @@
 
 module Wycheproof (
     Wycheproof(..)
-  , EcdsaTestGroup(..)
-  , PublicKey(..)
-  , EcdsaVerifyTest(..)
-
-  , parse_der_sig
-  , toProjective
-  , toEcdsa
-
-  , execute
   , execute_group
   ) where
 
@@ -43,7 +34,7 @@ execute_group :: SigType -> EcdsaTestGroup -> TestTree
 execute_group ty EcdsaTestGroup {..} =
     testGroup msg (fmap (execute ty pk_uncompressed) etg_tests)
   where
-    msg = mempty
+    msg = "wycheproof (" <> T.unpack etg_type <> ", " <> T.unpack etg_sha <> ")"
     PublicKey {..} = etg_publicKey
 
 execute :: SigType -> Projective -> EcdsaVerifyTest -> TestTree
