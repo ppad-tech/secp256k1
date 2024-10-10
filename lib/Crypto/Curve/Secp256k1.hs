@@ -12,6 +12,7 @@ module Crypto.Curve.Secp256k1 (
   , Projective(..)
   , affine
   , projective
+  , valid
 
   -- * Elliptic curve group operations
   , neg
@@ -542,34 +543,36 @@ sign_unrestricted
 sign_unrestricted = _sign Unrestricted Hash
 
 _sign :: SigType -> HashFlag -> Integer -> BS.ByteString -> ECDSA
-_sign ty hf x m = runST $ do
-    -- RFC6979 sec 3.3a
-    let entropy = int2octets x
-        nonce   = bits2octets h
-    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
-    -- RFC6979 sec 2.4
-    sign_loop drbg
-  where
-    h_modQ = modQ (bits2int h)
+_sign ty hf x m
+  | not (ge x) = error "ppad-secp256k1 (sign): invalid secret key"
+  | otherwise  = runST $ do
+      -- RFC6979 sec 3.3a
+      let entropy = int2octets x
+          nonce   = bits2octets h
+      drbg <- DRBG.new SHA256.hmac entropy nonce mempty
+      -- RFC6979 sec 2.4
+      sign_loop drbg
+    where
+      h = case hf of
+        Hash -> SHA256.hash m
+        NoHash -> m
 
-    sign_loop g = do
-      k <- gen_k g
-      let kg = mul _CURVE_G k
-          Affine (modQ -> r) _ = affine kg
-          s = case modinv k (fi _CURVE_Q) of
-            Nothing   -> error "ppad-secp256k1 (sign): bad k value"
-            -- XX check timing implications of mod division of secret by Q
-            Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
-      if   r == 0 -- negligible probability
-      then sign_loop g
-      else let !sig = ECDSA r s
-           in  case ty of
-                 Unrestricted -> pure sig
-                 LowS -> pure (low sig)
+      h_modQ = modQ (bits2int h)
 
-    h = case hf of
-      Hash -> SHA256.hash m
-      NoHash -> m
+      sign_loop g = do
+        k <- gen_k g
+        let kg = mul _CURVE_G k
+            Affine (modQ -> r) _ = affine kg
+            s = case modinv k (fi _CURVE_Q) of
+              Nothing   -> error "ppad-secp256k1 (sign): bad k value"
+              -- XX check timing implications of mod division of secret by Q
+              Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
+        if   r == 0 -- negligible probability
+        then sign_loop g
+        else let !sig = ECDSA r s
+             in  case ty of
+                   Unrestricted -> pure sig
+                   LowS -> pure (low sig)
 
 -- Produce a "low-s" ECDSA signature for the provided message, using
 -- the provided private key.
