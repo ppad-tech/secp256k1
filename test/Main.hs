@@ -35,30 +35,32 @@ main = do
     Nothing -> error "couldn't parse wycheproof vectors"
     Just (w0, w1) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
-      , wycheproof_tests "(ecdsa, sha256)" w0
-      -- , wycheproof_tests "(ecdsa, sha256, bitcoin)" w1
+      , wycheproof_ecdsa_verify_tests "(ecdsa, sha256)" Unrestricted w0
+      , wycheproof_ecdsa_verify_tests "(ecdsa, sha256, bitcoin)" LowS w1
       ]
 
-wycheproof_tests :: String -> W.Wycheproof -> TestTree
-wycheproof_tests msg W.Wycheproof {..} =
+wycheproof_ecdsa_verify_tests :: String -> SigType -> W.Wycheproof -> TestTree
+wycheproof_ecdsa_verify_tests msg ty W.Wycheproof {..} =
   testGroup ("wycheproof vectors " <> msg) $
-    fmap execute_group wp_testGroups
+    fmap (execute_group ty) wp_testGroups
 
-execute_group :: W.EcdsaTestGroup -> TestTree
-execute_group W.EcdsaTestGroup {..} =
-    testGroup msg (fmap (execute pk_uncompressed) etg_tests)
+execute_group :: SigType -> W.EcdsaTestGroup -> TestTree
+execute_group ty W.EcdsaTestGroup {..} =
+    testGroup msg (fmap (execute ty pk_uncompressed) etg_tests)
   where
     msg = mempty
     W.PublicKey {..} = etg_publicKey
 
-execute :: Projective -> W.EcdsaVerifyTest -> TestTree
-execute pub W.EcdsaVerifyTest {..} = testCase report $ do
+execute :: SigType -> Projective -> W.EcdsaVerifyTest -> TestTree
+execute ty pub W.EcdsaVerifyTest {..} = testCase report $ do
     let msg = B16.decodeLenient (TE.encodeUtf8 t_msg)
         sig = W.toEcdsa t_sig
     case sig of
       Left _  -> assertBool mempty (t_result == "invalid")
       Right s -> do
-        let ver = verify msg pub s
+        let ver = case ty of
+              LowS -> verify msg pub s
+              Unrestricted -> verify_unrestricted msg pub s
         if   t_result == "invalid"
         then assertBool mempty (not ver)
         else assertBool mempty ver

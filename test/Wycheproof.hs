@@ -22,10 +22,16 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified GHC.Num.Integer as I
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
+
+-- big-endian bytestring decoding
+roll :: BS.ByteString -> Integer
+roll = BS.foldl' unstep 0 where
+  unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
 parse_der_sig :: AT.Parser ECDSA
 parse_der_sig = do
