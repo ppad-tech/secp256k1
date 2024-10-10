@@ -465,7 +465,7 @@ unroll i = case i of
     step m = Just (fi m, m `I.integerShiftR` 8)
 
 -- ecdsa ----------------------------------------------------------------------
--- see https://www.rfc-editor.org/rfc/rfc6979
+-- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
 
 -- RFC6979 2.3.2
 bits2int :: BS.ByteString -> Integer
@@ -535,7 +535,7 @@ _sign ty x (SHA256.hash -> h) = runST $ do
     -- RFC6979 sec 2.4
     sign_loop drbg
   where
-    h_modQ  = modQ (bits2int h)
+    h_modQ = modQ (bits2int h)
 
     sign_loop g = do
       k <- gen_k g
@@ -584,11 +584,12 @@ verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
   | otherwise =
       let e     = modQ (bits2int h)
           s_inv = case modinv s (fi _CURVE_Q) of
+            -- 'ge s' assures existence of inverse
             Nothing -> error "ppad-secp256k1 (verify): no inverse"
             Just si -> si
-          u1    = modQ (e * s_inv)
-          u2    = modQ (r * s_inv)
-          capR  = add (mul _CURVE_G u1) (mul p u2)
+          u1   = modQ (e * s_inv)
+          u2   = modQ (r * s_inv)
+          capR = add (mul _CURVE_G u1) (mul p u2)
       in  if   capR == _ZERO
           then False
           else let Affine (modQ -> v) _ = affine capR
