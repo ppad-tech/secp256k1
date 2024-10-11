@@ -50,8 +50,6 @@ import GHC.Natural
 import qualified GHC.Num.Integer as I
 import Prelude hiding (mod)
 
--- XX RFC 6979 uses Q whereas SEC1-v2 uses N for group order
-
 -- keystroke savers & other utilities -----------------------------------------
 
 fi :: (Integral a, Num b) => a -> b
@@ -66,7 +64,7 @@ modinv a m = case I.integerRecipMod# a m of
   (# | _ #) -> Nothing
 {-# INLINE modinv #-}
 
--- coordinate systems ---------------------------------------------------------
+-- coordinate systems & transformations ---------------------------------------
 
 -- curve point, affine coordinates
 data Affine = Affine !Integer !Integer
@@ -182,10 +180,12 @@ modQ a = I.integerMod a _CURVE_Q
 -- | Is field element?
 fe :: Integer -> Bool
 fe n = 0 < n && n < _CURVE_P
+{-# INLINE fe #-}
 
 -- | Is group element?
 ge :: Integer -> Bool
 ge n = 0 < n && n < _CURVE_Q
+{-# INLINE ge #-}
 
 -- | Square root (Shanks-Tonelli) modulo secp256k1 field prime.
 --
