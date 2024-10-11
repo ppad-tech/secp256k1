@@ -27,13 +27,17 @@ module Crypto.Curve.Secp256k1 (
   -- * ECDSA
   , ECDSA(..)
   , SigType(..)
-  , sign
-  , sign_unrestricted
+  , sign_ecdsa
+  , sign_ecdsa_unrestricted
   , verify
   , verify_unrestricted
 
+  -- * Schnorr
+  , sign_schnorr
+  , verify_schnorr
+
     -- for testing
-  , _sign_no_hash
+  , _sign_ecdsa_no_hash
   ) where
 
 import Control.Monad (when)
@@ -42,6 +46,7 @@ import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as BSB
 import qualified Data.ByteString.Base16 as B16 -- XX kill this dep
 import Data.Int (Int64)
 import Data.STRef
@@ -521,30 +526,42 @@ data HashFlag =
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
 --
---   'sign' produces a "low-s" signature, as is commonly required
+--   'sign_ecdsa' produces a "low-s" signature, as is commonly required
 --   in applications. If you need a generic ECDSA signature, use
---   'sign_unrestricted'.
-sign
+--   'sign_ecdsa_unrestricted'.
+sign_ecdsa
   :: Integer         -- ^ secret key
   -> BS.ByteString   -- ^ message
   -> ECDSA
-sign = _sign LowS Hash
+sign_ecdsa = _sign_ecdsa LowS Hash
 
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
 --
---   'sign_unrestricted' produces an unrestricted ECDSA signature, which
+--   'sign_ecdsa_unrestricted' produces an unrestricted ECDSA signature, which
 --   is less common in applications. If you need a conventional "low-s"
---   signature, use 'sign'.
-sign_unrestricted
+--   signature, use 'sign_ecdsa'.
+sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
   -> ECDSA
-sign_unrestricted = _sign Unrestricted Hash
+sign_ecdsa_unrestricted = _sign_ecdsa Unrestricted Hash
 
-_sign :: SigType -> HashFlag -> Integer -> BS.ByteString -> ECDSA
-_sign ty hf x m
-  | not (ge x) = error "ppad-secp256k1 (sign): invalid secret key"
+-- Produce a "low-s" ECDSA signature for the provided message, using
+-- the provided private key. Assumes that the message has already been
+-- pre-hashed.
+--
+-- (Useful for testing against noble-secp256k1's suite, in which messages
+-- in the test vectors have already been hashed.)
+_sign_ecdsa_no_hash
+  :: Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message digest
+  -> ECDSA
+_sign_ecdsa_no_hash = _sign_ecdsa LowS NoHash
+
+_sign_ecdsa :: SigType -> HashFlag -> Integer -> BS.ByteString -> ECDSA
+_sign_ecdsa ty hf x m
+  | not (ge x) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
   | otherwise  = runST $ do
       -- RFC6979 sec 3.3a
       let entropy = int2octets x
@@ -564,7 +581,7 @@ _sign ty hf x m
         let kg = mul _CURVE_G k
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
-              Nothing   -> error "ppad-secp256k1 (sign): bad k value"
+              Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
               -- XX check timing implications of mod division of secret by Q
               Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
         if   r == 0 -- negligible probability
@@ -573,19 +590,6 @@ _sign ty hf x m
              in  case ty of
                    Unrestricted -> pure sig
                    LowS -> pure (low sig)
-
--- Produce a "low-s" ECDSA signature for the provided message, using
--- the provided private key.
---
--- Assumes that the message has already been pre-hashed.
---
--- Useful for testing against noble-secp256k1's suite, in which messages
--- have already been hashed.
-_sign_no_hash
-  :: Integer        -- ^ secret key
-  -> BS.ByteString  -- ^ message digest
-  -> ECDSA
-_sign_no_hash = _sign LowS NoHash
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer
@@ -605,6 +609,17 @@ low (ECDSA r s) = ECDSA r ms where
     | s > B.unsafeShiftR _CURVE_Q 1 = modQ (negate s)
     | otherwise = s
 {-# INLINE low #-}
+
+-- | Verify a "low-s" ECDSA signature for the provided message and
+--   public key.
+verify
+  :: BS.ByteString -- ^ message
+  -> Projective    -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify m p sig@(ECDSA _ s)
+  | s > B.unsafeShiftR _CURVE_Q 1 = False
+  | otherwise = verify_unrestricted m p sig
 
 -- | Verify an unrestricted ECDSA signature for the provided message and
 --   public key.
@@ -630,14 +645,63 @@ verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
           else let Affine (modQ -> v) _ = affine capR
                in  v == r
 
--- | Verify a "low-s" ECDSA signature for the provided message and
---   public key.
-verify
-  :: BS.ByteString -- ^ message
-  -> Projective    -- ^ public key
-  -> ECDSA         -- ^ signature
-  -> Bool
-verify m p sig@(ECDSA _ s)
-  | s > B.unsafeShiftR _CURVE_Q 1 = False
-  | otherwise = verify_unrestricted m p sig
+-- schnorr --------------------------------------------------------------------
+
+hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
+hash_tagged tag x = SHA256.hash (SHA256.hash tag <> SHA256.hash tag <> x)
+
+-- bytewise xor on bytestrings
+xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
+xor b c = loop mempty 0 where
+  loop !acc j
+    | j == b_len = BS.toStrict . BSB.toLazyByteString $ acc
+    | otherwise  =
+        let nacc = acc <> BSB.word8 (BS.index b j `B.xor` BS.index c j)
+        in  loop nacc (succ j)
+
+  b_len = BS.length b
+
+sign_schnorr
+  :: Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
+  -> BS.ByteString  -- ^ 64-byte schnorr signature
+sign_schnorr d' m a
+  | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
+  | otherwise  =
+      let Affine _ y_p = affine (mul _CURVE_G d)
+          d | y_p `rem` 2 == 0 = d'
+            | otherwise = _CURVE_Q - d'
+
+          bytes_d = unroll d
+          h_a = hash_tagged "BIP0340/aux" a
+          t = xor bytes_d h_a
+
+          bytes_p = undefined -- unroll p -- XX grrrr
+          rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
+
+          k' = modQ (roll rand)
+
+      in  if   k' == 0
+          then error "ppad-secp256k1 (sign_schnorr): invalid k" -- negligible
+          else
+            let Affine _ y_r = affine (mul _CURVE_G k')
+                k | y_r `rem` 2 == 0 = k'
+                  | otherwise = _CURVE_Q - k'
+
+                bytes_r = undefined -- unroll r -- XX grrr
+                e = modQ
+                  . roll
+                  . hash_tagged "BIP0340/challenge"
+                  $ bytes_r <> bytes_p <> m
+
+                bytes_ked = unroll (modQ (k + e * d))
+
+                sig = bytes_r <> bytes_ked
+
+            in  if   verify_schnorr sig
+                then sig
+                else error "ppad-secp256k1 (sign_schnorr): invalid signature"
+
+verify_schnorr = undefined
 

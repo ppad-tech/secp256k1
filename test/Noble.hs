@@ -39,7 +39,7 @@ execute_valid (label, ValidTest {..}) =
     let msg = vt_m
         x   = vt_d
         pec = parse_compact vt_signature
-        sig = _sign_no_hash x msg
+        sig = _sign_ecdsa_no_hash x msg
     assertEqual mempty pec sig
 
 execute_invalid_sign :: (Int, InvalidSignTest) -> TestTree
@@ -47,7 +47,7 @@ execute_invalid_sign (label, InvalidSignTest {..}) =
     testCase ("noble-secp256k1, invalid sign (" <> show label <> ")") $ do
       let x   = ivs_d
           m   = ivs_m
-      err <- catch (pure (_sign_no_hash x m) >> pure False) handler
+      err <- catch (pure (_sign_ecdsa_no_hash x m) >> pure False) handler
       if   err
       then assertFailure "expected error not caught"
       else pure ()
