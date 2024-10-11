@@ -488,7 +488,7 @@ bits2int bs =
 -- RFC6979 2.3.3
 int2octets :: Integer -> BS.ByteString
 int2octets i = pad (unroll i) where
-  pad !bs
+  pad bs
     | BS.length bs < fi _CURVE_Q_BYTES = pad (BS.cons 0 bs)
     | otherwise = bs
 
@@ -592,7 +592,7 @@ gen_k :: DRBG.DRBG s -> ST s Integer
 gen_k g = loop g where
   loop drbg = do
     bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
-    let !can = bits2int bytes
+    let can = bits2int bytes
     if   can >= _CURVE_Q
     then loop drbg
     else pure can
