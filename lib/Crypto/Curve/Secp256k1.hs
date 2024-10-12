@@ -29,8 +29,8 @@ module Crypto.Curve.Secp256k1 (
   , SigType(..)
   , sign_ecdsa
   , sign_ecdsa_unrestricted
-  , verify
-  , verify_unrestricted
+  , verify_ecdsa
+  , verify_ecdsa_unrestricted
 
   -- * Schnorr
   , sign_schnorr
@@ -53,7 +53,6 @@ import Data.STRef
 import GHC.Generics
 import GHC.Natural
 import qualified GHC.Num.Integer as I
-import Prelude hiding (mod)
 
 -- keystroke savers & other utilities -----------------------------------------
 
@@ -222,8 +221,6 @@ modsqrt n = runST $ do
 -- | Negate secp256k1 point.
 neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (modP (negate y)) z
-
--- XX check implications on timing safety by special-casing algos below
 
 -- | Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
@@ -612,30 +609,31 @@ low (ECDSA r s) = ECDSA r ms where
 
 -- | Verify a "low-s" ECDSA signature for the provided message and
 --   public key.
-verify
+verify_ecdsa
   :: BS.ByteString -- ^ message
   -> Projective    -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
-verify m p sig@(ECDSA _ s)
+verify_ecdsa m p sig@(ECDSA _ s)
   | s > B.unsafeShiftR _CURVE_Q 1 = False
-  | otherwise = verify_unrestricted m p sig
+  | otherwise = verify_ecdsa_unrestricted m p sig
 
 -- | Verify an unrestricted ECDSA signature for the provided message and
 --   public key.
-verify_unrestricted
+verify_ecdsa_unrestricted
   :: BS.ByteString -- ^ message
   -> Projective    -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
-verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
+verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
   -- SEC1-v2 4.1.4
   | not (ge r) || not (ge s) = False
   | otherwise =
       let e     = modQ (bits2int h)
           s_inv = case modinv s (fi _CURVE_Q) of
             -- 'ge s' assures existence of inverse
-            Nothing -> error "ppad-secp256k1 (verify): no inverse"
+            Nothing ->
+              error "ppad-secp256k1 (verify_ecdsa_unrestricted): no inverse"
             Just si -> si
           u1   = modQ (e * s_inv)
           u2   = modQ (r * s_inv)
@@ -646,6 +644,7 @@ verify_unrestricted (SHA256.hash -> h) p (ECDSA r s)
                in  v == r
 
 -- schnorr --------------------------------------------------------------------
+-- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 
 hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
 hash_tagged tag x = SHA256.hash (SHA256.hash tag <> SHA256.hash tag <> x)
@@ -669,7 +668,7 @@ sign_schnorr
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let Affine _ y_p = affine (mul _CURVE_G d)
+      let p@(Affine x_p y_p) = affine (mul _CURVE_G d)
           d | y_p `rem` 2 == 0 = d'
             | otherwise = _CURVE_Q - d'
 
@@ -677,7 +676,7 @@ sign_schnorr d' m a
           h_a = hash_tagged "BIP0340/aux" a
           t = xor bytes_d h_a
 
-          bytes_p = undefined -- unroll p -- XX grrrr
+          bytes_p = unroll x_p
           rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
 
           k' = modQ (roll rand)
@@ -685,11 +684,11 @@ sign_schnorr d' m a
       in  if   k' == 0
           then error "ppad-secp256k1 (sign_schnorr): invalid k" -- negligible
           else
-            let Affine _ y_r = affine (mul _CURVE_G k')
+            let Affine x_r y_r = affine (mul _CURVE_G k')
                 k | y_r `rem` 2 == 0 = k'
                   | otherwise = _CURVE_Q - k'
 
-                bytes_r = undefined -- unroll r -- XX grrr
+                bytes_r = unroll x_r
                 e = modQ
                   . roll
                   . hash_tagged "BIP0340/challenge"
@@ -699,9 +698,37 @@ sign_schnorr d' m a
 
                 sig = bytes_r <> bytes_ked
 
-            in  if   verify_schnorr sig
+            in  if   verify_schnorr m p sig
                 then sig
                 else error "ppad-secp256k1 (sign_schnorr): invalid signature"
 
-verify_schnorr = undefined
+-- https://gist.github.com/trevordixon/6788535
+modexp :: Integer -> Integer -> Integer -> Integer
+modexp b e m
+  | e == 0    = 1
+  | otherwise =
+      let t = if B.testBit e 0 then b `mod` m else 1
+      in  t * modexp ((b * b) `mod` m) (B.shiftR e 1) m `mod` m
+
+lift :: Integer -> Affine
+lift x
+  | not (fe x) = error "ppad-secp256k1 (lift): not field element"
+  | otherwise =
+      let c = modP (modexp x 3 _CURVE_P + 7)
+          y = modexp c ((_CURVE_P + 1) `div` 4) _CURVE_P
+          y_p
+            | y `rem` 2 == 0 = y
+            | otherwise      = _CURVE_P - y
+
+      in  if   c /= modexp y 2 _CURVE_P
+          then error "ppad-secp256k1 (lift): modular square predicate failed"
+          else Affine x y_p
+
+
+verify_schnorr
+  :: BS.ByteString  -- ^ message
+  -> Affine         -- ^ public key
+  -> BS.ByteString  -- ^ 64-byte schnorr signature
+  -> Bool
+verify_schnorr m p sig = undefined
 
