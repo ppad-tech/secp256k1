@@ -62,7 +62,7 @@ execute_invalid_verify (label, InvalidVerifyTest {..}) =
       Nothing -> assertBool "no parse" True
       Just pub -> do
         let sig = parse_compact ivv_signature
-            ver = verify ivv_m pub sig
+            ver = verify_ecdsa ivv_m pub sig
         assertBool mempty (not ver)
 
 fi :: (Integral a, Num b) => a -> b

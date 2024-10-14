@@ -45,8 +45,8 @@ execute ty pub EcdsaVerifyTest {..} = testCase report $ do
       Left _  -> assertBool mempty (t_result == "invalid")
       Right s -> do
         let ver = case ty of
-              LowS -> verify msg pub s
-              Unrestricted -> verify_unrestricted msg pub s
+              LowS -> verify_ecdsa msg pub s
+              Unrestricted -> verify_ecdsa_unrestricted msg pub s
         if   t_result == "invalid"
         then assertBool mempty (not ver)
         else assertBool mempty ver
