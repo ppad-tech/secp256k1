@@ -653,12 +653,13 @@ hash_tagged tag x = SHA256.hash (SHA256.hash tag <> SHA256.hash tag <> x)
 xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
 xor b c = loop mempty 0 where
   loop !acc j
-    | j == b_len = BS.toStrict . BSB.toLazyByteString $ acc
+    | j == b_len || j == c_len = BS.toStrict . BSB.toLazyByteString $ acc
     | otherwise  =
         let nacc = acc <> BSB.word8 (BS.index b j `B.xor` BS.index c j)
         in  loop nacc (succ j)
 
   b_len = BS.length b
+  c_len = BS.length c
 
 sign_schnorr
   :: Integer        -- ^ secret key
@@ -724,11 +725,21 @@ lift x
           then error "ppad-secp256k1 (lift): modular square predicate failed"
           else Affine x y_p
 
-
 verify_schnorr
   :: BS.ByteString  -- ^ message
   -> Affine         -- ^ public key
   -> BS.ByteString  -- ^ 64-byte schnorr signature
   -> Bool
-verify_schnorr m p sig = undefined
+verify_schnorr m (Affine x_p _) sig =
+  let capP@(Affine x_P _) = lift x_p
+      (roll -> r, roll -> s) = BS.splitAt 32 sig
+  in  if   r >= _CURVE_P
+      then False
+      else if   s >= _CURVE_Q
+           then False
+           else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
+                          (unroll r <> unroll x_P <> m)
+                    Affine x_R y_R = affine $
+                      add (mul _CURVE_G s) (neg (mul (projective capP) e))
+                in  not (y_R `rem` 2 /= 0 || x_R /= r)
 
