@@ -669,7 +669,7 @@ sign_schnorr
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p@(Affine x_p y_p) = affine (mul _CURVE_G d)
+      let p@(Affine x_p y_p) = affine (mul _CURVE_G d')
           d | y_p `rem` 2 == 0 = d'
             | otherwise = _CURVE_Q - d'
 
