@@ -40,7 +40,7 @@ data Case = Case {
 execute :: Case -> TestTree
 execute Case {..} = testCase ("bip0340 " <> show c_index) $
   case parse_point c_pk of
-    Nothing -> assertFailure "no parse"
+    Nothing -> assertBool mempty (not c_res)
     Just (affine -> pk) -> do
       if   c_sk == mempty
       then do -- no signature; test verification
