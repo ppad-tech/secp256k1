@@ -431,34 +431,38 @@ mul_safe p n
 
 -- parsing --------------------------------------------------------------------
 
--- | Parse hex-encoded compressed or uncompressed point.
+-- | Parse hex-encoded compressed or uncompressed point, or BIP0340
+--   public key.
 parse_point :: BS.ByteString -> Maybe Projective
 parse_point (B16.decode -> ebs) = case ebs of
   Left _   -> Nothing
-  Right bs -> case BS.uncons bs of
-    Nothing -> Nothing
-    Just (fi -> h, t) ->
-      let (roll -> x, etc) = BS.splitAt (fi _CURVE_Q_BYTES) t
-          len = BS.length bs
-      in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
-          then if   not (fe x)
-               then Nothing
-               else do
-                 y <- modsqrt (weierstrass x)
-                 let yodd = I.integerTestBit y 0
-                     hodd = I.integerTestBit h 0
-                 pure $
-                   if   hodd /= yodd
-                   then Projective x (modP (negate y)) 1
-                   else Projective x y 1
-          else
-               if   len == 65 && h == 0x04  -- uncompressed
-               then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
-                        p = Projective x y 1
-                    in  if   valid p
-                        then Just p
-                        else Nothing
-               else Nothing
+  Right bs
+    | BS.length bs == 32 ->                               -- bip0340 public key
+        fmap projective (lift (roll bs))
+    | otherwise -> case BS.uncons bs of
+        Nothing -> Nothing
+        Just (fi -> h, t) ->
+          let (roll -> x, etc) = BS.splitAt (fi _CURVE_Q_BYTES) t
+              len = BS.length bs
+          in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
+              then if   not (fe x)
+                   then Nothing
+                   else do
+                     y <- modsqrt (weierstrass x)
+                     let yodd = I.integerTestBit y 0
+                         hodd = I.integerTestBit h 0
+                     pure $
+                       if   hodd /= yodd
+                       then Projective x (modP (negate y)) 1
+                       else Projective x y 1
+              else
+                   if   len == 65 && h == 0x04  -- uncompressed
+                   then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
+                            p = Projective x y 1
+                        in  if   valid p
+                            then Just p
+                            else Nothing
+                   else Nothing
 
 -- big-endian bytestring decoding
 roll :: BS.ByteString -> Integer
@@ -682,8 +686,8 @@ sign_schnorr d' m a
 
           k' = modQ (roll rand)
 
-      in  if   k' == 0
-          then error "ppad-secp256k1 (sign_schnorr): invalid k" -- negligible
+      in  if   k' == 0 -- negligible probability
+          then error "ppad-secp256k1 (sign_schnorr): invalid k"
           else
             let Affine x_r y_r = affine (mul _CURVE_G k')
                 k | y_r `rem` 2 == 0 = k'
@@ -711,9 +715,9 @@ modexp b e m
       let t = if B.testBit e 0 then b `mod` m else 1
       in  t * modexp ((b * b) `mod` m) (B.shiftR e 1) m `mod` m
 
-lift :: Integer -> Affine
+lift :: Integer -> Maybe Affine
 lift x
-  | not (fe x) = error "ppad-secp256k1 (lift): not field element"
+  | not (fe x) = Nothing
   | otherwise =
       let c = modP (modexp x 3 _CURVE_P + 7)
           y = modexp c ((_CURVE_P + 1) `div` 4) _CURVE_P
@@ -722,24 +726,23 @@ lift x
             | otherwise      = _CURVE_P - y
 
       in  if   c /= modexp y 2 _CURVE_P
-          then error "ppad-secp256k1 (lift): modular square predicate failed"
-          else Affine x y_p
+          then Nothing
+          else Just $! (Affine x y_p)
 
 verify_schnorr
   :: BS.ByteString  -- ^ message
   -> Affine         -- ^ public key
   -> BS.ByteString  -- ^ 64-byte schnorr signature
   -> Bool
-verify_schnorr m (Affine x_p _) sig =
-  let capP@(Affine x_P _) = lift x_p
-      (roll -> r, roll -> s) = BS.splitAt 32 sig
-  in  if   r >= _CURVE_P
-      then False
-      else if   s >= _CURVE_Q
-           then False
-           else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
-                          (unroll r <> unroll x_P <> m)
-                    Affine x_R y_R = affine $
-                      add (mul _CURVE_G s) (neg (mul (projective capP) e))
-                in  not (y_R `rem` 2 /= 0 || x_R /= r)
+verify_schnorr m (Affine x_p _) sig = case lift x_p of
+  Nothing -> False
+  Just capP@(Affine x_P _) ->
+    let (roll -> r, roll -> s) = BS.splitAt 32 sig
+    in  if   r >= _CURVE_P || s >= _CURVE_Q
+        then False
+        else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
+                       (unroll r <> unroll x_P <> m)
+                 Affine x_R y_R = affine $
+                   add (mul _CURVE_G s) (neg (mul (projective capP) e))
+             in  not (y_R `rem` 2 /= 0 || x_R /= r)
 
