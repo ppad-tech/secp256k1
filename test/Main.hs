@@ -18,6 +18,7 @@ import qualified Data.Text.IO as TIO
 import qualified Data.Text.Encoding as TE
 import qualified Noble as N
 import qualified Wycheproof as W
+import qualified BIP340
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral

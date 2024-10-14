@@ -38,7 +38,8 @@ test-suite secp256k1-tests
   hs-source-dirs:      test
   main-is:             Main.hs
   other-modules:
-      Noble
+      BIP340
+    , Noble
     , Wycheproof
 
   ghc-options:
