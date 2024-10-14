@@ -46,7 +46,6 @@ import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Builder as BSB
 import qualified Data.ByteString.Base16 as B16 -- XX kill this dep
 import Data.Int (Int64)
 import Data.STRef
@@ -60,6 +59,16 @@ fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
 
+-- generic modular exponentiation
+-- https://gist.github.com/trevordixon/6788535
+modexp :: Integer -> Integer -> Integer -> Integer
+modexp b e m
+  | e == 0    = 1
+  | otherwise =
+      let t = if B.testBit e 0 then b `mod` m else 1
+      in  t * modexp ((b * b) `mod` m) (B.shiftR e 1) m `mod` m
+{-# INLINE modexp #-}
+
 -- generic modular inverse
 -- for a, m return x such that ax = 1 mod m
 modinv :: Integer -> Natural -> Maybe Integer
@@ -67,6 +76,10 @@ modinv a m = case I.integerRecipMod# a m of
   (# fi -> n | #) -> Just $! n
   (# | _ #) -> Nothing
 {-# INLINE modinv #-}
+
+-- bytewise xor
+xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
+xor = BS.packZipWith B.xor
 
 -- coordinate systems & transformations ---------------------------------------
 
@@ -456,7 +469,7 @@ parse_point (B16.decode -> ebs) = case ebs of
                        then Projective x (modP (negate y)) 1
                        else Projective x y 1
               else
-                   if   len == 65 && h == 0x04  -- uncompressed
+                   if   len == 65 && h == 0x04            -- uncompressed
                    then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
                             p = Projective x y 1
                         in  if   valid p
@@ -653,18 +666,6 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
 hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
 hash_tagged tag x = SHA256.hash (SHA256.hash tag <> SHA256.hash tag <> x)
 
--- bytewise xor on bytestrings
-xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
-xor b c = loop mempty 0 where
-  loop !acc j
-    | j == b_len || j == c_len = BS.toStrict . BSB.toLazyByteString $ acc
-    | otherwise  =
-        let nacc = acc <> BSB.word8 (BS.index b j `B.xor` BS.index c j)
-        in  loop nacc (succ j)
-
-  b_len = BS.length b
-  c_len = BS.length c
-
 sign_schnorr
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -707,14 +708,6 @@ sign_schnorr d' m a
                 then sig
                 else error "ppad-secp256k1 (sign_schnorr): invalid signature"
 
--- https://gist.github.com/trevordixon/6788535
-modexp :: Integer -> Integer -> Integer -> Integer
-modexp b e m
-  | e == 0    = 1
-  | otherwise =
-      let t = if B.testBit e 0 then b `mod` m else 1
-      in  t * modexp ((b * b) `mod` m) (B.shiftR e 1) m `mod` m
-
 lift :: Integer -> Maybe Affine
 lift x
   | not (fe x) = Nothing
@@ -724,7 +717,6 @@ lift x
           y_p
             | y `rem` 2 == 0 = y
             | otherwise      = _CURVE_P - y
-
       in  if   c /= modexp y 2 _CURVE_P
           then Nothing
           else Just $! (Affine x y_p)
