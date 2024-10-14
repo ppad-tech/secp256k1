@@ -41,8 +41,7 @@ execute :: Case -> TestTree
 execute Case {..} = testCase ("bip0340 " <> show c_index) $
   case parse_point c_pk of
     Nothing -> assertFailure "no parse"
-    Just p -> do
-      let pk = affine p
+    Just (affine -> pk) -> do
       if   c_sk == mempty
       then do -- no signature; test verification
         let ver = verify_schnorr c_msg pk c_sig
@@ -68,13 +67,13 @@ test_case :: AT.Parser Case
 test_case = do
   c_index <- AT.decimal AT.<?> "index"
   _ <- AT.char ','
-  c_sk <- fmap B16.decodeLenient (AT.takeWhile1 (/= ',') AT.<?> "sk")
+  c_sk <- fmap B16.decodeLenient (AT.takeWhile (/= ',') AT.<?> "sk")
   _ <- AT.char ','
   c_pk <- AT.takeWhile1 (/= ',') AT.<?> "pk"
   _ <- AT.char ','
-  c_aux <- fmap B16.decodeLenient (AT.takeWhile1 (/= ',') AT.<?> "aux")
+  c_aux <- fmap B16.decodeLenient (AT.takeWhile (/= ',') AT.<?> "aux")
   _ <- AT.char ','
-  c_msg <- fmap B16.decodeLenient (AT.takeWhile1 (/= ',') AT.<?> "msg")
+  c_msg <- fmap B16.decodeLenient (AT.takeWhile (/= ',') AT.<?> "msg")
   _ <- AT.char ','
   c_sig <- fmap B16.decodeLenient (AT.takeWhile1 (/= ',') AT.<?> "sig")
   _ <- AT.char ','
