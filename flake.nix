@@ -1,5 +1,5 @@
 {
-  description = "Pure Haskell cryptographic primitives on secp256k1";
+  description = "Pure Haskell Schnorr, ECDSA on secp256k1";
 
   inputs = {
     ppad-sha256 = {
