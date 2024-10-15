@@ -6,9 +6,21 @@
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- XX clean up export list
 module Crypto.Curve.Secp256k1 (
+  -- * Curve parameters and modular arithmetic utilities
+    _CURVE_P
+  , _CURVE_Q
+  , _CURVE_G
+  , modexp
+  , modinv
+  , modP
+  , modQ
+  , fe
+  , ge
+
   -- * Coordinate systems and transformations
-    Affine(..)
+  , Affine(..)
   , Projective(..)
   , affine
   , projective
@@ -482,6 +494,15 @@ roll :: BS.ByteString -> Integer
 roll = BS.foldl' alg 0 where
   alg a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
+-- unroll a 256-bit integer, left-padding with zeros if necessary
+-- the size of the integer is not checked
+unroll32 :: Integer -> BS.ByteString
+unroll32 (unroll -> u)
+    | l < 32 = BS.replicate (32 - l) 0 <> u
+    | otherwise = u
+  where
+    l = BS.length u
+
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
 unroll i = case i of
@@ -664,50 +685,11 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 
 hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
-hash_tagged tag x = SHA256.hash (SHA256.hash tag <> SHA256.hash tag <> x)
+hash_tagged tag x =
+  let !h = SHA256.hash tag
+  in  SHA256.hash (h <> h <> x)
 
-sign_schnorr
-  :: Integer        -- ^ secret key
-  -> BS.ByteString  -- ^ message
-  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
-  -> BS.ByteString  -- ^ 64-byte schnorr signature
-sign_schnorr d' m a
-  | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
-  | otherwise  =
-      let p@(Affine x_p y_p) = affine (mul _CURVE_G d')
-          d | y_p `rem` 2 == 0 = d'
-            | otherwise = _CURVE_Q - d'
-
-          bytes_d = unroll d
-          h_a = hash_tagged "BIP0340/aux" a
-          t = xor bytes_d h_a
-
-          bytes_p = unroll x_p
-          rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
-
-          k' = modQ (roll rand)
-
-      in  if   k' == 0 -- negligible probability
-          then error "ppad-secp256k1 (sign_schnorr): invalid k"
-          else
-            let Affine x_r y_r = affine (mul _CURVE_G k')
-                k | y_r `rem` 2 == 0 = k'
-                  | otherwise = _CURVE_Q - k'
-
-                bytes_r = unroll x_r
-                e = modQ
-                  . roll
-                  . hash_tagged "BIP0340/challenge"
-                  $ bytes_r <> bytes_p <> m
-
-                bytes_ked = unroll (modQ (k + e * d))
-
-                sig = bytes_r <> bytes_ked
-
-            in  if   verify_schnorr m p sig
-                then sig
-                else error "ppad-secp256k1 (sign_schnorr): invalid signature"
-
+-- return point with x coordinate == x and with even y coordinate
 lift :: Integer -> Maybe Affine
 lift x
   | not (fe x) = Nothing
@@ -721,6 +703,46 @@ lift x
           then Nothing
           else Just $! (Affine x y_p)
 
+sign_schnorr
+  :: Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
+  -> BS.ByteString  -- ^ 64-byte schnorr signature
+sign_schnorr d' m a
+  | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
+  | otherwise  =
+      let p@(Affine x_p y_p) = affine (mul _CURVE_G d')
+          d | y_p `rem` 2 == 0 = d'
+            | otherwise = _CURVE_Q - d'
+
+          bytes_d = unroll32 d
+          h_a = hash_tagged "BIP0340/aux" a
+          t = xor bytes_d h_a
+
+          bytes_p = unroll32 x_p
+          rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
+
+          k' = modQ (roll rand)
+
+      in  if   k' == 0 -- negligible probability
+          then error "ppad-secp256k1 (sign_schnorr): invalid k"
+          else
+            let Affine x_r y_r = affine (mul _CURVE_G k')
+                k | y_r `rem` 2 == 0 = k'
+                  | otherwise = _CURVE_Q - k'
+
+                bytes_r = unroll32 x_r
+                e = modQ . roll . hash_tagged "BIP0340/challenge"
+                  $ bytes_r <> bytes_p <> m
+
+                bytes_ked = unroll32 (modQ (k + e * d))
+
+                sig = bytes_r <> bytes_ked
+
+            in  if   verify_schnorr m p sig
+                then sig
+                else error "ppad-secp256k1 (sign_schnorr): invalid signature"
+
 verify_schnorr
   :: BS.ByteString  -- ^ message
   -> Affine         -- ^ public key
@@ -733,8 +755,10 @@ verify_schnorr m (Affine x_p _) sig = case lift x_p of
     in  if   r >= _CURVE_P || s >= _CURVE_Q
         then False
         else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
-                       (unroll r <> unroll x_P <> m)
-                 Affine x_R y_R = affine $
-                   add (mul _CURVE_G s) (neg (mul (projective capP) e))
-             in  not (y_R `rem` 2 /= 0 || x_R /= r)
+                       (unroll32 r <> unroll32 x_P <> m)
+                 dif = add (mul _CURVE_G s) (neg (mul (projective capP) e))
+             in  if   dif == _ZERO
+                 then False
+                 else let Affine x_R y_R = affine dif
+                      in  not (y_R `rem` 2 /= 0 || x_R /= r)
 

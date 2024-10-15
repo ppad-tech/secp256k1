@@ -30,18 +30,23 @@ main = do
   wp_ecdsa_sha256_bitcoin <- TIO.readFile
     "etc/ecdsa_secp256k1_sha256_bitcoin_test.json"
   noble_ecdsa <- TIO.readFile "etc/noble_ecdsa.json"
-  let trip = do
+  bip340 <- BS.readFile "etc/bip-0340-test-vectors.csv"
+  let quar = do
         wp0 <- A.decodeStrictText wp_ecdsa_sha256 :: Maybe W.Wycheproof
         wp1 <- A.decodeStrictText wp_ecdsa_sha256_bitcoin :: Maybe W.Wycheproof
         nob <- A.decodeStrictText noble_ecdsa :: Maybe N.Ecdsa
-        pure (wp0, wp1, nob)
-  case trip of
+        bip <- case AT.parseOnly BIP340.cases bip340 of
+                 Left _ -> Nothing
+                 Right b -> pure b
+        pure (wp0, wp1, nob, bip)
+  case quar of
     Nothing -> error "couldn't parse wycheproof vectors"
-    Just (w0, w1, no) -> defaultMain $ testGroup "ppad-secp256k1" [
+    Just (w0, w1, no, ip) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
       , wycheproof_ecdsa_verify_tests "(ecdsa, sha256)" Unrestricted w0
       , wycheproof_ecdsa_verify_tests "(ecdsa, sha256, low-s)" LowS w1
       , N.execute_ecdsa no
+      , testGroup "bip0340 vectors (schnorr)" (fmap BIP340.execute ip)
       ]
 
 wycheproof_ecdsa_verify_tests :: String -> SigType -> W.Wycheproof -> TestTree
