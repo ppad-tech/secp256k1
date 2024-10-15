@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK prune #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
