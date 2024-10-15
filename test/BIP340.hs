@@ -41,7 +41,7 @@ execute :: Case -> TestTree
 execute Case {..} = testCase ("bip0340 " <> show c_index) $
   case parse_point c_pk of
     Nothing -> assertBool mempty (not c_res)
-    Just (affine -> pk) -> do
+    Just pk -> do
       if   c_sk == mempty
       then do -- no signature; test verification
         let ver = verify_schnorr c_msg pk c_sig

@@ -31,7 +31,8 @@ module Crypto.Curve.Secp256k1 (
   , verify_ecdsa
   , verify_ecdsa_unrestricted
 
-  -- * Point parsing
+  -- * Parsing
+  , parse_integer
   , parse_point
 
   -- Elliptic curve group operations
@@ -43,6 +44,7 @@ module Crypto.Curve.Secp256k1 (
   -- Coordinate systems and transformations
   , Affine(..)
   , Projective(..)
+  , Pub
   , affine
   , projective
   , valid
@@ -160,6 +162,9 @@ instance Eq Projective where
         y1z2 = modP (ay * bz)
         y2z1 = modP (by * az)
     in  x1z2 == x2z1 && y1z2 == y2z1
+
+-- | A Schnorr and ECDSA-flavoured alias for a secp256k1 point.
+type Pub = Projective
 
 -- Convert to affine coordinates.
 affine :: Projective -> Affine
@@ -482,6 +487,10 @@ mul p n
 
 -- parsing --------------------------------------------------------------------
 
+-- | Parse a hex-encoded integer.
+parse_integer :: BS.ByteString -> Integer
+parse_integer = roll . B16.decodeLenient
+
 -- | Parse hex-encoded compressed point (33 bytes), uncompressed point
 --   (65 bytes), or BIP0340-style point (32 bytes).
 parse_point :: BS.ByteString -> Maybe Projective
@@ -518,6 +527,16 @@ parse_point (B16.decode -> ebs) = case ebs of
 -- schnorr --------------------------------------------------------------------
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 
+-- | Create a 64-byte Schnorr signature for the provided message, using
+--   the provided secret key.
+--
+--   BIP0340 recommends that 32 bytes of fresh auxiliary entropy be
+--   generated and added at signing time as additional protection
+--   against side-channel attacks (namely, to thwart so-called "fault
+--   injection" attacks). This entropy is /supplemental/ to security,
+--   and the cryptographic security of the signature scheme itself does
+--   not rely on it, so it is not strictly required; 32 zero bytes can
+--   be used in its stead (and can be supplied via 'mempty').
 sign_schnorr
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -526,7 +545,8 @@ sign_schnorr
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p@(Affine x_p y_p) = affine (mul _CURVE_G d')
+      let p_proj = mul _CURVE_G d'
+          Affine x_p y_p = affine p_proj
           d | y_p `rem` 2 == 0 = d' -- d' group element assures p nonzero
             | otherwise = _CURVE_Q - d'
 
@@ -554,16 +574,18 @@ sign_schnorr d' m a
 
                 sig = bytes_r <> bytes_ked
 
-            in  if   verify_schnorr m p sig
+            in  if   verify_schnorr m p_proj sig
                 then sig
                 else error "ppad-secp256k1 (sign_schnorr): invalid signature"
 
+-- | Verify a 64-byte Schnorr signature for the provided message with
+--   the supplied public key.
 verify_schnorr
   :: BS.ByteString  -- ^ message
-  -> Affine         -- ^ public key
+  -> Pub            -- ^ public key
   -> BS.ByteString  -- ^ 64-byte schnorr signature
   -> Bool
-verify_schnorr m (Affine x_p _) sig = case lift x_p of
+verify_schnorr m (affine -> Affine x_p _) sig = case lift x_p of
   Nothing -> False
   Just capP@(Affine x_P _) ->
     let (roll -> r, roll -> s) = BS.splitAt 32 sig
@@ -604,6 +626,7 @@ bits2octets bs =
       z2 = modQ z1
   in  int2octets z2
 
+-- | An ECDSA signature.
 data ECDSA = ECDSA {
     ecdsa_r :: !Integer
   , ecdsa_s :: !Integer
@@ -713,7 +736,7 @@ low (ECDSA r s) = ECDSA r ms where
 --   public key.
 verify_ecdsa
   :: BS.ByteString -- ^ message
-  -> Projective    -- ^ public key
+  -> Pub           -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
 verify_ecdsa m p sig@(ECDSA _ s)
@@ -724,7 +747,7 @@ verify_ecdsa m p sig@(ECDSA _ s)
 --   public key.
 verify_ecdsa_unrestricted
   :: BS.ByteString -- ^ message
-  -> Projective    -- ^ public key
+  -> Pub           -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
 verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
