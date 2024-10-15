@@ -6,35 +6,10 @@
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
--- XX clean up export list
 module Crypto.Curve.Secp256k1 (
-  -- * Curve parameters and modular arithmetic utilities
-    _CURVE_P
-  , _CURVE_Q
-  , _CURVE_G
-  , modexp
-  , modinv
-  , modP
-  , modQ
-  , fe
-  , ge
-
-  -- * Coordinate systems and transformations
-  , Affine(..)
-  , Projective(..)
-  , affine
-  , projective
-  , valid
-
-  -- * Elliptic curve group operations
-  , neg
-  , add
-  , double
-  , mul
-  , mul_safe
-
-  -- * Point parsing
-  , parse_point
+  -- * BIP0340 Schnorr signatures
+    sign_schnorr
+  , verify_schnorr
 
   -- * ECDSA
   , ECDSA(..)
@@ -44,11 +19,23 @@ module Crypto.Curve.Secp256k1 (
   , verify_ecdsa
   , verify_ecdsa_unrestricted
 
-  -- * Schnorr
-  , sign_schnorr
-  , verify_schnorr
+  -- * Point parsing
+  , parse_point
 
-    -- for testing
+  -- Elliptic curve group operations
+  , neg
+  , add
+  , double
+  , mul
+
+  -- Coordinate systems and transformations
+  , Affine(..)
+  , Projective(..)
+  , affine
+  , projective
+  , valid
+
+  -- for testing
   , _sign_ecdsa_no_hash
   ) where
 
@@ -93,6 +80,49 @@ modinv a m = case I.integerRecipMod# a m of
 xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
 xor = BS.packZipWith B.xor
 
+-- big-endian bytestring decoding
+roll :: BS.ByteString -> Integer
+roll = BS.foldl' alg 0 where
+  alg a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+
+-- big-endian bytestring encoding
+unroll :: Integer -> BS.ByteString
+unroll i = case i of
+    0 -> BS.singleton 0
+    _ -> BS.reverse $ BS.unfoldr step i -- XX looks slow
+  where
+    step 0 = Nothing
+    step m = Just (fi m, m `I.integerShiftR` 8)
+
+-- big-endian bytestring encoding for 256-bit ints, left-padding with
+-- zeros if necessary. the size of the integer is not checked.
+unroll32 :: Integer -> BS.ByteString
+unroll32 (unroll -> u)
+    | l < 32 = BS.replicate (32 - l) 0 <> u
+    | otherwise = u
+  where
+    l = BS.length u
+
+-- (bip0340) tagged hash function
+hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
+hash_tagged tag x =
+  let !h = SHA256.hash tag
+  in  SHA256.hash (h <> h <> x)
+
+-- (bip0340) return point with x coordinate == x and with even y coordinate
+lift :: Integer -> Maybe Affine
+lift x
+  | not (fe x) = Nothing
+  | otherwise =
+      let c = modP (modexp x 3 _CURVE_P + 7)
+          y = modexp c ((_CURVE_P + 1) `div` 4) _CURVE_P
+          y_p
+            | y `rem` 2 == 0 = y
+            | otherwise      = _CURVE_P - y
+      in  if   c /= modexp y 2 _CURVE_P
+          then Nothing
+          else Just $! (Affine x y_p)
+
 -- coordinate systems & transformations ---------------------------------------
 
 -- curve point, affine coordinates
@@ -119,7 +149,7 @@ instance Eq Projective where
         y2z1 = modP (by * az)
     in  x1z2 == x2z1 && y1z2 == y2z1
 
--- | Convert to affine coordinates.
+-- Convert to affine coordinates.
 affine :: Projective -> Affine
 affine p@(Projective x y z)
   | p == _ZERO = Affine 0 0
@@ -128,13 +158,13 @@ affine p@(Projective x y z)
       Nothing -> error "ppad-secp256k1 (affine): impossible point"
       Just iz -> Affine (modP (x * iz)) (modP (y * iz))
 
--- | Convert to projective coordinates.
+-- Convert to projective coordinates.
 projective :: Affine -> Projective
 projective (Affine x y)
   | x == 0 && y == 0 = _ZERO
   | otherwise = Projective x y 1
 
--- | Point is valid
+-- Point is valid
 valid :: Projective -> Bool
 valid p = case affine p of
   Affine x y
@@ -150,8 +180,6 @@ valid p = case affine p of
 -- = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
 _CURVE_P :: Integer
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
-
--- XX can i make this abstract and use SPECIALIZE pragmas?
 
 -- secp256k1 group order
 _CURVE_Q :: Integer
@@ -190,35 +218,36 @@ _CURVE_G = Projective x y 1 where
 _ZERO :: Projective
 _ZERO = Projective 0 1 0
 
--- | secp256k1 in prime order j-invariant 0 form (i.e. a == 0).
+-- secp256k1 in prime order j-invariant 0 form (i.e. a == 0).
 weierstrass :: Integer -> Integer
 weierstrass x = modP (modP (x * x) * x + _CURVE_B)
+{-# INLINE weierstrass #-}
 
 -- field, group operations ----------------------------------------------------
 
--- | Division modulo secp256k1 field prime.
+-- Division modulo secp256k1 field prime.
 modP :: Integer -> Integer
 modP a = I.integerMod a _CURVE_P
 {-# INLINE modP #-}
 
--- | Division modulo secp256k1 group order.
+-- Division modulo secp256k1 group order.
 modQ :: Integer -> Integer
 modQ a = I.integerMod a _CURVE_Q
 {-# INLINE modQ #-}
 
--- | Is field element?
+-- Is field element?
 fe :: Integer -> Bool
 fe n = 0 < n && n < _CURVE_P
 {-# INLINE fe #-}
 
--- | Is group element?
+-- Is group element?
 ge :: Integer -> Bool
 ge n = 0 < n && n < _CURVE_Q
 {-# INLINE ge #-}
 
--- | Square root (Shanks-Tonelli) modulo secp256k1 field prime.
+-- Square root (Shanks-Tonelli) modulo secp256k1 field prime.
 --
---   For a, return x such that a = x x mod _CURVE_P.
+-- For a, return x such that a = x x mod _CURVE_P.
 modsqrt :: Integer -> Maybe Integer
 modsqrt n = runST $ do
     r   <- newSTRef 1
@@ -243,11 +272,11 @@ modsqrt n = runST $ do
 
 -- ec point operations --------------------------------------------------------
 
--- | Negate secp256k1 point.
+-- Negate secp256k1 point.
 neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (modP (negate y)) z
 
--- | Elliptic curve addition on secp256k1.
+-- Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
 add p q@(Projective _ _ z)
   | p == q = double p        -- algo 9
@@ -424,7 +453,7 @@ double (Projective x y z) = runST $ do
   modifySTRef' x3 (\rx3 -> modP (rx3 + rx3))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
--- | Scalar multiplication of secp256k1 points.
+-- Scalar multiplication of secp256k1 points.
 mul :: Projective -> Integer -> Projective
 mul p n
     | n == 0 = _ZERO
@@ -439,25 +468,10 @@ mul p n
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
 
--- | Safe scalar multiplication of secp256k1 points.
-mul_safe :: Projective -> Integer -> Projective
-mul_safe p n
-    | not (ge n) = error "ppad-secp256k1 (mul_safe): scalar not in group"
-    | otherwise  = loop _ZERO _CURVE_G p n
-  where
-    loop !r !f !d m
-      | m <= 0 = r
-      | otherwise =
-          let nd = double d
-              nm = I.integerShiftR m 1
-          in  if   I.integerTestBit m 0
-              then loop (add r d) f nd nm
-              else loop r (add f d) nd nm
-
 -- parsing --------------------------------------------------------------------
 
--- | Parse hex-encoded compressed or uncompressed point, or BIP0340
---   public key.
+-- | Parse hex-encoded compressed point (33 bytes), uncompressed point
+--   (65 bytes), or BIP0340-style point (32 bytes).
 parse_point :: BS.ByteString -> Maybe Projective
 parse_point (B16.decode -> ebs) = case ebs of
   Left _   -> Nothing
@@ -489,28 +503,67 @@ parse_point (B16.decode -> ebs) = case ebs of
                             else Nothing
                    else Nothing
 
--- big-endian bytestring decoding
-roll :: BS.ByteString -> Integer
-roll = BS.foldl' alg 0 where
-  alg a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+-- schnorr --------------------------------------------------------------------
+-- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 
--- unroll a 256-bit integer, left-padding with zeros if necessary
--- the size of the integer is not checked
-unroll32 :: Integer -> BS.ByteString
-unroll32 (unroll -> u)
-    | l < 32 = BS.replicate (32 - l) 0 <> u
-    | otherwise = u
-  where
-    l = BS.length u
+sign_schnorr
+  :: Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
+  -> BS.ByteString  -- ^ 64-byte schnorr signature
+sign_schnorr d' m a
+  | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
+  | otherwise  =
+      let p@(Affine x_p y_p) = affine (mul _CURVE_G d')
+          d | y_p `rem` 2 == 0 = d' -- d' group element assures p nonzero
+            | otherwise = _CURVE_Q - d'
 
--- big-endian bytestring encoding
-unroll :: Integer -> BS.ByteString
-unroll i = case i of
-    0 -> BS.singleton 0
-    _ -> BS.reverse $ BS.unfoldr step i -- XX looks slow
-  where
-    step 0 = Nothing
-    step m = Just (fi m, m `I.integerShiftR` 8)
+          bytes_d = unroll32 d
+          h_a = hash_tagged "BIP0340/aux" a
+          t = xor bytes_d h_a
+
+          bytes_p = unroll32 x_p
+          rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
+
+          k' = modQ (roll rand)
+
+      in  if   k' == 0 -- negligible probability
+          then error "ppad-secp256k1 (sign_schnorr): invalid k"
+          else
+            let Affine x_r y_r = affine (mul _CURVE_G k')
+                k | y_r `rem` 2 == 0 = k' -- k' nonzero per above
+                  | otherwise = _CURVE_Q - k'
+
+                bytes_r = unroll32 x_r
+                e = modQ . roll . hash_tagged "BIP0340/challenge"
+                  $ bytes_r <> bytes_p <> m
+
+                bytes_ked = unroll32 (modQ (k + e * d))
+
+                sig = bytes_r <> bytes_ked
+
+            in  if   verify_schnorr m p sig
+                then sig
+                else error "ppad-secp256k1 (sign_schnorr): invalid signature"
+
+verify_schnorr
+  :: BS.ByteString  -- ^ message
+  -> Affine         -- ^ public key
+  -> BS.ByteString  -- ^ 64-byte schnorr signature
+  -> Bool
+verify_schnorr m (Affine x_p _) sig = case lift x_p of
+  Nothing -> False
+  Just capP@(Affine x_P _) ->
+    let (roll -> r, roll -> s) = BS.splitAt 32 sig
+    in  if   r >= _CURVE_P || s >= _CURVE_Q
+        then False
+        else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
+                       (unroll32 r <> unroll32 x_P <> m)
+                 dif = add (mul _CURVE_G s) (neg (mul (projective capP) e))
+             in  if   dif == _ZERO
+                 then False
+                 else let Affine x_R y_R = affine dif
+                      in  not (y_R `rem` 2 /= 0 || x_R /= r)
 
 -- ecdsa ----------------------------------------------------------------------
 -- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
@@ -617,7 +670,6 @@ _sign_ecdsa ty hf x m
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
-              -- XX check timing implications of mod division of secret by Q
               Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
         if   r == 0 -- negligible probability
         then sign_loop g
@@ -680,85 +732,4 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
           then False
           else let Affine (modQ -> v) _ = affine capR
                in  v == r
-
--- schnorr --------------------------------------------------------------------
--- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
-
-hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
-hash_tagged tag x =
-  let !h = SHA256.hash tag
-  in  SHA256.hash (h <> h <> x)
-
--- return point with x coordinate == x and with even y coordinate
-lift :: Integer -> Maybe Affine
-lift x
-  | not (fe x) = Nothing
-  | otherwise =
-      let c = modP (modexp x 3 _CURVE_P + 7)
-          y = modexp c ((_CURVE_P + 1) `div` 4) _CURVE_P
-          y_p
-            | y `rem` 2 == 0 = y
-            | otherwise      = _CURVE_P - y
-      in  if   c /= modexp y 2 _CURVE_P
-          then Nothing
-          else Just $! (Affine x y_p)
-
-sign_schnorr
-  :: Integer        -- ^ secret key
-  -> BS.ByteString  -- ^ message
-  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
-  -> BS.ByteString  -- ^ 64-byte schnorr signature
-sign_schnorr d' m a
-  | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
-  | otherwise  =
-      let p@(Affine x_p y_p) = affine (mul _CURVE_G d')
-          d | y_p `rem` 2 == 0 = d'
-            | otherwise = _CURVE_Q - d'
-
-          bytes_d = unroll32 d
-          h_a = hash_tagged "BIP0340/aux" a
-          t = xor bytes_d h_a
-
-          bytes_p = unroll32 x_p
-          rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
-
-          k' = modQ (roll rand)
-
-      in  if   k' == 0 -- negligible probability
-          then error "ppad-secp256k1 (sign_schnorr): invalid k"
-          else
-            let Affine x_r y_r = affine (mul _CURVE_G k')
-                k | y_r `rem` 2 == 0 = k'
-                  | otherwise = _CURVE_Q - k'
-
-                bytes_r = unroll32 x_r
-                e = modQ . roll . hash_tagged "BIP0340/challenge"
-                  $ bytes_r <> bytes_p <> m
-
-                bytes_ked = unroll32 (modQ (k + e * d))
-
-                sig = bytes_r <> bytes_ked
-
-            in  if   verify_schnorr m p sig
-                then sig
-                else error "ppad-secp256k1 (sign_schnorr): invalid signature"
-
-verify_schnorr
-  :: BS.ByteString  -- ^ message
-  -> Affine         -- ^ public key
-  -> BS.ByteString  -- ^ 64-byte schnorr signature
-  -> Bool
-verify_schnorr m (Affine x_p _) sig = case lift x_p of
-  Nothing -> False
-  Just capP@(Affine x_P _) ->
-    let (roll -> r, roll -> s) = BS.splitAt 32 sig
-    in  if   r >= _CURVE_P || s >= _CURVE_Q
-        then False
-        else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
-                       (unroll32 r <> unroll32 x_P <> m)
-                 dif = add (mul _CURVE_G s) (neg (mul (projective capP) e))
-             in  if   dif == _ZERO
-                 then False
-                 else let Affine x_R y_R = affine dif
-                      in  not (y_R `rem` 2 /= 0 || x_R /= r)
 
