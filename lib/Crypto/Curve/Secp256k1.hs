@@ -541,7 +541,7 @@ sign_schnorr
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
-  -> BS.ByteString  -- ^ 64-byte schnorr signature
+  -> BS.ByteString  -- ^ 64-byte Schnorr signature
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
@@ -583,7 +583,7 @@ sign_schnorr d' m a
 verify_schnorr
   :: BS.ByteString  -- ^ message
   -> Pub            -- ^ public key
-  -> BS.ByteString  -- ^ 64-byte schnorr signature
+  -> BS.ByteString  -- ^ 64-byte Schnorr signature
   -> Bool
 verify_schnorr m (affine -> Affine x_p _) sig = case lift x_p of
   Nothing -> False
