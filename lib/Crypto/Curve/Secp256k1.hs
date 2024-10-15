@@ -6,12 +6,24 @@
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- |
+-- Module: Crypto.Curve.Secp256k1
+-- Copyright: (c) 2024 Jared Tobin
+-- License: MIT
+-- Maintainer: Jared Tobin <jared@ppad.tech>
+--
+-- Pure [BIP0340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki)
+-- Schnorr signatures and deterministic
+-- [RFC6979](https://www.rfc-editor.org/rfc/rfc6979) ECDSA (with
+-- [BIP0146](https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki)-style
+-- "low-S" signatures) on the elliptic curve secp256k1.
+
 module Crypto.Curve.Secp256k1 (
   -- * BIP0340 Schnorr signatures
     sign_schnorr
   , verify_schnorr
 
-  -- * ECDSA
+  -- * RFC6979 ECDSA
   , ECDSA(..)
   , SigType(..)
   , sign_ecdsa

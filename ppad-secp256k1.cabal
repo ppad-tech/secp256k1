@@ -1,7 +1,7 @@
 cabal-version:      3.0
 name:               ppad-secp256k1
 version:            0.1.0
-synopsis:           Cryptographic primitives on the secp256k1 elliptic curve
+synopsis:           Schnorr signatures & ECDSA on the elliptic curve secp256k1
 license:            MIT
 license-file:       LICENSE
 author:             Jared Tobin
@@ -11,8 +11,8 @@ build-type:         Simple
 tested-with:        GHC == { 9.8.1, 9.6.4 }
 extra-doc-files:    CHANGELOG
 description:
-  A pure Haskell implementation of various cryptographic primitives on the
-  secp256k1 elliptic curve.
+  Pure BIP0340-style Schnorr signatures and deterministic RFC6979 ECDSA on
+  the elliptic curve secp256k1.
 
 source-repository head
   type:     git
