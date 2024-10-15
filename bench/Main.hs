@@ -46,27 +46,27 @@ secp256k1 = bgroup "secp256k1" [
     s = "0306413898a49c93cccf3db6e9078c1b6a8e62568e4a4770e0d7d96792d1c580ad"
 
     bparse :: BS.ByteString -> S.Projective
-    bparse bs = case S.parse bs of
+    bparse bs = case S.parse_point bs of
       Nothing -> error "bang"
       Just v -> v
 
     foo :: S.Projective
-    foo = case S.parse p of
+    foo = case S.parse_point p of
       Nothing -> error "boom"
       Just !pa -> pa
 
     bar :: S.Projective
-    bar = case S.parse q of
+    bar = case S.parse_point q of
       Nothing -> error "bang"
       Just !pa -> pa
 
     baz :: S.Projective
-    baz = case S.parse r of
+    baz = case S.parse_point r of
       Nothing -> error "bang"
       Just !pa -> pa
 
     qux :: S.Projective
-    qux = case S.parse s of
+    qux = case S.parse_point s of
       Nothing -> error "bang"
       Just !pa -> pa
 
