@@ -271,25 +271,26 @@ ge n = 0 < n && n < _CURVE_Q
 -- For a, return x such that a = x x mod _CURVE_P.
 modsqrt :: Integer -> Maybe Integer
 modsqrt n = runST $ do
-    r   <- newSTRef 1 -- XX apparently STRef's are boxed
+    r   <- newSTRef 1
     num <- newSTRef n
     e   <- newSTRef ((_CURVE_P + 1) `div` 4)
-    loop r num e
-    rr  <- readSTRef r
+
+    let loop = do
+          ev <- readSTRef e
+          when (ev > 0) $ do
+            when (B.testBit ev 0) $ do
+              numv <- readSTRef num
+              modifySTRef' r (\rv -> (rv * numv) `rem` _CURVE_P)
+            modifySTRef' num (\numv -> (numv * numv) `rem` _CURVE_P)
+            modifySTRef' e (`I.integerShiftR` 1)
+            loop
+
+    loop
+    rv  <- readSTRef r
     pure $
-      if   modP (rr * rr) == n
-      then Just $! rr
+      if   modP (rv * rv) == n
+      then Just $! rv
       else Nothing
-  where
-    loop sr snum se = do
-      e <- readSTRef se
-      when (e > 0) $ do
-        when (I.integerTestBit e 0) $ do
-          num <- readSTRef snum
-          modifySTRef' sr (\lr -> (lr * num) `rem` _CURVE_P)
-        modifySTRef' snum (\ln -> (ln * ln) `rem` _CURVE_P)
-        modifySTRef' se (`I.integerShiftR` 1)
-        loop sr snum se
 
 -- ec point operations --------------------------------------------------------
 
