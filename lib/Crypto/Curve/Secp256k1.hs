@@ -63,7 +63,6 @@ import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BU
-import Data.Int (Int64)
 import Data.STRef
 import Data.Word (Word8)
 import GHC.Generics
@@ -209,13 +208,13 @@ _CURVE_Q = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 -- bitlength of group order
 --
 -- = smallest integer such that _CURVE_Q < 2 ^ _CURVE_Q_BITS
-_CURVE_Q_BITS :: Int64
+_CURVE_Q_BITS :: Int
 _CURVE_Q_BITS = 256
 
 -- bytelength of _CURVE_Q
 --
 -- = _CURVE_Q_BITS / 8
-_CURVE_Q_BYTES :: Int64
+_CURVE_Q_BYTES :: Int
 _CURVE_Q_BYTES = 32
 
 -- secp256k1 short weierstrass form, /a/ coefficient
@@ -526,7 +525,7 @@ _parse_compressed h (roll -> x)
         else Projective x y 1
 
 _parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
-_parse_uncompressed h (BS.splitAt (fi _CURVE_Q_BYTES) -> (roll -> x, roll -> y))
+_parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll -> x, roll -> y))
   | h /= 0x04 = Nothing
   | otherwise =
       let p = Projective x y 1
@@ -626,7 +625,7 @@ bits2int bs =
 int2octets :: Integer -> BS.ByteString
 int2octets i = pad (unroll i) where
   pad bs
-    | BS.length bs < fi _CURVE_Q_BYTES = pad (BS.cons 0 bs)
+    | BS.length bs < _CURVE_Q_BYTES = pad (BS.cons 0 bs)
     | otherwise = bs
 
 -- RFC6979 2.3.4
