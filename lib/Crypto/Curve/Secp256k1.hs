@@ -69,9 +69,10 @@ import GHC.Generics
 import GHC.Natural
 import qualified GHC.Num.Integer as I
 
--- note the use of GHC.Num.Integer-qualified functions throughout
--- this module; in some cases explicit use of these functions yields
--- tremendous speedups compared to more general versions
+-- note the use of GHC.Num.Integer-qualified functions throughout this
+-- module; in some cases explicit use of these functions (especially
+-- I.integerPowMod# and I.integerRecipMod#) yields tremendous speedups
+-- compared to more general versions
 
 -- keystroke savers & other utilities -----------------------------------------
 
@@ -108,7 +109,7 @@ roll = BS.foldl' alg 0 where
 unroll :: Integer -> BS.ByteString
 unroll i = case i of
     0 -> BS.singleton 0
-    _ -> BS.reverse $ BS.unfoldr step i -- XX looks slow
+    _ -> BS.reverse $ BS.unfoldr step i
   where
     step 0 = Nothing
     step m = Just (fi m, m `I.integerShiftR` 8)
