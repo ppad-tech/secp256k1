@@ -69,6 +69,10 @@ import GHC.Generics
 import GHC.Natural
 import qualified GHC.Num.Integer as I
 
+-- note the use of GHC.Num.Integer-qualified functions throughout
+-- this module; in some cases explicit use of these functions yields
+-- tremendous speedups compared to more general versions
+
 -- keystroke savers & other utilities -----------------------------------------
 
 fi :: (Integral a, Num b) => a -> b
@@ -76,13 +80,11 @@ fi = fromIntegral
 {-# INLINE fi #-}
 
 -- generic modular exponentiation
--- https://gist.github.com/trevordixon/6788535
-modexp :: Integer -> Integer -> Integer -> Integer
-modexp b e m
-  | e == 0    = 1
-  | otherwise =
-      let t = if B.testBit e 0 then b `mod` m else 1
-      in  t * modexp ((b * b) `mod` m) (B.shiftR e 1) m `mod` m
+-- b ^ e mod m
+modexp :: Integer -> Natural -> Natural -> Integer
+modexp b (fi -> e) m = case I.integerPowMod# b e m of
+  (# fi -> n | #) -> n
+  (# | _ #) -> error "negative power impossible"
 {-# INLINE modexp #-}
 
 -- generic modular inverse
@@ -131,12 +133,12 @@ lift :: Integer -> Maybe Affine
 lift x
   | not (fe x) = Nothing
   | otherwise =
-      let c = modP (modexp x 3 _CURVE_P + 7)
-          y = modexp c ((_CURVE_P + 1) `div` 4) _CURVE_P
-          y_p
-            | y `rem` 2 == 0 = y
-            | otherwise      = _CURVE_P - y
-      in  if   c /= modexp y 2 _CURVE_P
+      let c = remP (modexp x 3 (fi _CURVE_P) + 7) -- modexp always nonnegative
+          e = (_CURVE_P + 1) `I.integerQuot` 4
+          y = modexp c (fi e) (fi _CURVE_P)
+          y_p | B.testBit y 0 = _CURVE_P - y
+              | otherwise = y
+      in  if   c /= modexp y 2 (fi _CURVE_P)
           then Nothing
           else Just $! (Affine x y_p)
 
@@ -240,7 +242,7 @@ _ZERO = Projective 0 1 0
 
 -- secp256k1 in prime order j-invariant 0 form (i.e. a == 0).
 weierstrass :: Integer -> Integer
-weierstrass x = modP (modP (x * x) * x + _CURVE_B)
+weierstrass x = remP (remP (x * x) * x + _CURVE_B)
 {-# INLINE weierstrass #-}
 
 -- field, group operations ----------------------------------------------------
@@ -250,10 +252,22 @@ modP :: Integer -> Integer
 modP a = I.integerMod a _CURVE_P
 {-# INLINE modP #-}
 
+-- Division modulo secp256k1 field prime, when argument is nonnegative.
+-- (more efficient than modP)
+remP :: Integer -> Integer
+remP a = I.integerRem a _CURVE_P
+{-# INLINE remP #-}
+
 -- Division modulo secp256k1 group order.
 modQ :: Integer -> Integer
 modQ a = I.integerMod a _CURVE_Q
 {-# INLINE modQ #-}
+
+-- Division modulo secp256k1 group order, when argument is nonnegative.
+-- (more efficient than modQ)
+remQ :: Integer -> Integer
+remQ a = I.integerRem a _CURVE_Q
+{-# INLINE remQ #-}
 
 -- Is field element?
 fe :: Integer -> Bool
@@ -272,22 +286,22 @@ modsqrt :: Integer -> Maybe Integer
 modsqrt n = runST $ do
     r   <- newSTRef 1
     num <- newSTRef n
-    e   <- newSTRef ((_CURVE_P + 1) `div` 4)
+    e   <- newSTRef ((_CURVE_P + 1) `I.integerQuot` 4)
 
     let loop = do
           ev <- readSTRef e
           when (ev > 0) $ do
-            when (B.testBit ev 0) $ do
+            when (I.integerTestBit ev 0) $ do
               numv <- readSTRef num
-              modifySTRef' r (\rv -> (rv * numv) `rem` _CURVE_P)
-            modifySTRef' num (\numv -> (numv * numv) `rem` _CURVE_P)
+              modifySTRef' r (\rv -> (rv * numv) `I.integerRem` _CURVE_P)
+            modifySTRef' num (\numv -> (numv * numv) `I.integerRem` _CURVE_P)
             modifySTRef' e (`I.integerShiftR` 1)
             loop
 
     loop
     rv  <- readSTRef r
     pure $
-      if   modP (rv * rv) == n
+      if   remP (rv * rv) == n
       then Just $! rv
       else Nothing
 
@@ -313,7 +327,7 @@ add_proj (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
   x3 <- newSTRef 0
   y3 <- newSTRef 0
   z3 <- newSTRef 0
-  let b3 = modP (_CURVE_B * 3)
+  let b3 = remP (_CURVE_B * 3)
   t0 <- newSTRef (modP (x1 * x2)) -- 1
   t1 <- newSTRef (modP (y1 * y2))
   t2 <- newSTRef (modP (z1 * z2))
@@ -385,7 +399,7 @@ add_mixed (Projective x1 y1 z1) (Projective x2 y2 z2)
       x3 <- newSTRef 0
       y3 <- newSTRef 0
       z3 <- newSTRef 0
-      let b3 = modP (_CURVE_B * 3)
+      let b3 = remP (_CURVE_B * 3)
       t0 <- newSTRef (modP (x1 * x2)) -- 1
       t1 <- newSTRef (modP (y1 * y2))
       t3 <- newSTRef (modP (x2 + y2))
@@ -440,7 +454,7 @@ double (Projective x y z) = runST $ do
   x3 <- newSTRef 0
   y3 <- newSTRef 0
   z3 <- newSTRef 0
-  let b3 = modP (_CURVE_B * 3)
+  let b3 = remP (_CURVE_B * 3)
   t0 <- newSTRef (modP (y * y)) -- 1
   readSTRef t0 >>= \r0 ->
     writeSTRef z3 (modP (r0 + r0))
@@ -517,7 +531,7 @@ _parse_compressed h (roll -> x)
   | not (fe x) = Nothing
   | otherwise = do
       y <- modsqrt (weierstrass x)
-      let yodd = B.testBit y 0
+      let yodd = I.integerTestBit y 0
           hodd = B.testBit h 0
       pure $!
         if   hodd /= yodd
@@ -556,8 +570,8 @@ sign_schnorr d' m a
   | otherwise  =
       let p_proj = mul _CURVE_G d'
           Affine x_p y_p = affine p_proj
-          d | y_p `rem` 2 == 0 = d' -- d' group element assures p nonzero
-            | otherwise = _CURVE_Q - d'
+          d | I.integerTestBit y_p 0 = _CURVE_Q - d'
+            | otherwise = d'
 
           bytes_d = unroll32 d
           h_a = hash_tagged "BIP0340/aux" a
@@ -572,8 +586,8 @@ sign_schnorr d' m a
           then error "ppad-secp256k1 (sign_schnorr): invalid k"
           else
             let Affine x_r y_r = affine (mul _CURVE_G k')
-                k | y_r `rem` 2 == 0 = k' -- k' nonzero per above
-                  | otherwise = _CURVE_Q - k'
+                k | I.integerTestBit y_r 0 = _CURVE_Q - k'
+                  | otherwise = k'
 
                 bytes_r = unroll32 x_r
                 e = modQ . roll . hash_tagged "BIP0340/challenge"
@@ -606,7 +620,7 @@ verify_schnorr m (affine -> Affine x_p _) sig = case lift x_p of
              in  if   dif == _ZERO
                  then False
                  else let Affine x_R y_R = affine dif
-                      in  not (y_R `rem` 2 /= 0 || x_R /= r)
+                      in  not (I.integerTestBit y_R 0 || x_R /= r)
 
 -- ecdsa ----------------------------------------------------------------------
 -- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
@@ -707,7 +721,7 @@ _sign_ecdsa ty hf x m
         Hash -> SHA256.hash m
         NoHash -> m
 
-      h_modQ = modQ (bits2int h)
+      h_modQ = remQ (bits2int h) -- bits2int yields nonnegative
 
       sign_loop g = do
         k <- gen_k g
@@ -715,7 +729,7 @@ _sign_ecdsa ty hf x m
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
-              Just kinv -> modQ (modQ (h_modQ + modQ (x * r)) * kinv)
+              Just kinv -> remQ (remQ (h_modQ + remQ (x * r)) * kinv)
         if   r == 0 -- negligible probability
         then sign_loop g
         else let !sig = ECDSA r s
@@ -764,14 +778,14 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
   -- SEC1-v2 4.1.4
   | not (ge r) || not (ge s) = False
   | otherwise =
-      let e     = modQ (bits2int h)
+      let e     = remQ (bits2int h)
           s_inv = case modinv s (fi _CURVE_Q) of
             -- 'ge s' assures existence of inverse
             Nothing ->
               error "ppad-secp256k1 (verify_ecdsa_unrestricted): no inverse"
             Just si -> si
-          u1   = modQ (e * s_inv)
-          u2   = modQ (r * s_inv)
+          u1   = remQ (e * s_inv)
+          u2   = remQ (r * s_inv)
           capR = add (mul _CURVE_G u1) (mul p u2)
       in  if   capR == _ZERO
           then False
