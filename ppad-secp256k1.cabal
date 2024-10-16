@@ -66,6 +66,7 @@ benchmark secp256k1-bench
 
   build-depends:
       base
+    , base16-bytestring
     , bytestring
     , criterion
     , deepseq

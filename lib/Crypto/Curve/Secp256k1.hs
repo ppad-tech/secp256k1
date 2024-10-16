@@ -52,6 +52,8 @@ module Crypto.Curve.Secp256k1 (
 
   -- for testing
   , _sign_ecdsa_no_hash
+  , _CURVE_P
+  , _CURVE_Q
   ) where
 
 import Control.Monad (when)
