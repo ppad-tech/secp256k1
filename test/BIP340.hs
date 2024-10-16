@@ -39,7 +39,7 @@ data Case = Case {
 
 execute :: Case -> TestTree
 execute Case {..} = testCase ("bip0340 " <> show c_index) $
-  case parse_point c_pk of
+  case parse_point (B16.decodeLenient c_pk) of
     Nothing -> assertBool mempty (not c_res)
     Just pk -> do
       if   c_sk == mempty

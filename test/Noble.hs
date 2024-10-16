@@ -58,7 +58,7 @@ execute_invalid_sign (label, InvalidSignTest {..}) =
 execute_invalid_verify :: (Int, InvalidVerifyTest) -> TestTree
 execute_invalid_verify (label, InvalidVerifyTest {..}) =
   testCase ("noble-secp256k1, invalid verify (" <> show label <> ")") $
-    case parse_point ivv_Q of
+    case parse_point (B16.decodeLenient ivv_Q) of
       Nothing -> assertBool "no parse" True
       Just pub -> do
         let sig = parse_compact ivv_signature

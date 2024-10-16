@@ -27,7 +27,6 @@ library
       Crypto.Curve.Secp256k1
   build-depends:
       base
-    , base16-bytestring
     , bytestring
     , ppad-hmac-drbg
     , ppad-sha256

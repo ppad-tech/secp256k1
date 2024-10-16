@@ -135,7 +135,7 @@ data PublicKey = PublicKey {
   } deriving Show
 
 toProjective :: T.Text -> Projective
-toProjective (TE.encodeUtf8 -> bs) = case parse_point bs of
+toProjective (B16.decodeLenient . TE.encodeUtf8 -> bs) = case parse_point bs of
   Nothing -> error "wycheproof: couldn't parse pubkey"
   Just p -> p
 

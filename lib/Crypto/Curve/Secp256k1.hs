@@ -60,7 +60,6 @@ import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Base16 as B16 -- XX kill this dep
 import Data.Int (Int64)
 import Data.STRef
 import GHC.Generics
@@ -488,42 +487,40 @@ mul p n
 
 -- parsing --------------------------------------------------------------------
 
--- | Parse a hex-encoded integer.
+-- | Parse an integer.
 parse_integer :: BS.ByteString -> Integer
-parse_integer = roll . B16.decodeLenient
+parse_integer = roll
 
--- | Parse hex-encoded compressed point (33 bytes), uncompressed point
---   (65 bytes), or BIP0340-style point (32 bytes).
+-- | Parse compressed point (33 bytes), uncompressed point (65 bytes),
+--   or BIP0340-style point (32 bytes).
 parse_point :: BS.ByteString -> Maybe Projective
-parse_point (B16.decode -> ebs) = case ebs of
-  Left _   -> Nothing
-  Right bs
-    | BS.length bs == 32 ->                               -- bip0340 public key
-        fmap projective (lift (roll bs))
-    | otherwise -> case BS.uncons bs of
-        Nothing -> Nothing
-        Just (fi -> h, t) ->
-          let (roll -> x, etc) = BS.splitAt (fi _CURVE_Q_BYTES) t
-              len = BS.length bs
-          in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
-              then if   not (fe x)
-                   then Nothing
-                   else do
-                     y <- modsqrt (weierstrass x)
-                     let yodd = I.integerTestBit y 0
-                         hodd = I.integerTestBit h 0
-                     pure $
-                       if   hodd /= yodd
-                       then Projective x (modP (negate y)) 1
-                       else Projective x y 1
-              else
-                   if   len == 65 && h == 0x04            -- uncompressed
-                   then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
-                            p = Projective x y 1
-                        in  if   valid p
-                            then Just p
-                            else Nothing
-                   else Nothing
+parse_point bs
+  | BS.length bs == 32 =                                -- bip0340 public key
+      fmap projective (lift (roll bs))
+  | otherwise = case BS.uncons bs of
+      Nothing -> Nothing
+      Just (fi -> h, t) ->
+        let (roll -> x, etc) = BS.splitAt (fi _CURVE_Q_BYTES) t
+            len = BS.length bs
+        in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
+            then if   not (fe x)
+                 then Nothing
+                 else do
+                   y <- modsqrt (weierstrass x)
+                   let yodd = I.integerTestBit y 0
+                       hodd = I.integerTestBit h 0
+                   pure $
+                     if   hodd /= yodd
+                     then Projective x (modP (negate y)) 1
+                     else Projective x y 1
+            else
+                 if   len == 65 && h == 0x04            -- uncompressed
+                 then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
+                          p = Projective x y 1
+                      in  if   valid p
+                          then Just p
+                          else Nothing
+                 else Nothing
 
 -- schnorr --------------------------------------------------------------------
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
@@ -662,9 +659,10 @@ sign_ecdsa = _sign_ecdsa LowS Hash
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
 --
---   'sign_ecdsa_unrestricted' produces an unrestricted ECDSA signature, which
---   is less common in applications. If you need a conventional "low-s"
---   signature, use 'sign_ecdsa'.
+--   'sign_ecdsa_unrestricted' produces an unrestricted ECDSA signature,
+--   which is less common in applications due to its inherent
+--   malleability. If you need a conventional "low-s" signature, use
+--   'sign_ecdsa'.
 sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message

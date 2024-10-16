@@ -1,13 +1,10 @@
-{-# OPTIONS_GHC -fno-warn-unused-imports #-} -- XX delete me
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
-import Control.Monad (when)
 import Crypto.Curve.Secp256k1
-import qualified Data.Bits as B
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
 import qualified Data.ByteString as BS
@@ -15,7 +12,6 @@ import qualified Data.ByteString.Base16 as B16
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.Text.IO as TIO
-import qualified Data.Text.Encoding as TE
 import qualified Noble as N
 import qualified Wycheproof as W
 import qualified BIP340
@@ -73,19 +69,22 @@ render = filter (`notElem` ("\"" :: String)) . show
 
 -- XX replace these with something non-stupid
 parse_point_test_p :: TestTree
-parse_point_test_p = testCase (render p_hex) $ case parse_point p_hex of
-  Nothing -> assertFailure "bad parse"
-  Just p  -> assertEqual mempty p_pro p
+parse_point_test_p = testCase (render p_hex) $
+  case parse_point (B16.decodeLenient p_hex) of
+    Nothing -> assertFailure "bad parse"
+    Just p  -> assertEqual mempty p_pro p
 
 parse_point_test_q :: TestTree
-parse_point_test_q = testCase (render q_hex) $ case parse_point q_hex of
-  Nothing -> assertFailure "bad parse"
-  Just q  -> assertEqual mempty q_pro q
+parse_point_test_q = testCase (render q_hex) $
+  case parse_point (B16.decodeLenient q_hex) of
+    Nothing -> assertFailure "bad parse"
+    Just q  -> assertEqual mempty q_pro q
 
 parse_point_test_r :: TestTree
-parse_point_test_r = testCase (render r_hex) $ case parse_point r_hex of
-  Nothing -> assertFailure "bad parse"
-  Just r  -> assertEqual mempty r_pro r
+parse_point_test_r = testCase (render r_hex) $
+  case parse_point (B16.decodeLenient r_hex) of
+    Nothing -> assertFailure "bad parse"
+    Just r  -> assertEqual mempty r_pro r
 
 -- XX also make less dumb
 add_tests :: TestTree
