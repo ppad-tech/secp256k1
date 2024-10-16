@@ -62,8 +62,10 @@ import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Unsafe as BU
 import Data.Int (Int64)
 import Data.STRef
+import Data.Word (Word8)
 import GHC.Generics
 import GHC.Natural
 import qualified GHC.Num.Integer as I
@@ -269,7 +271,7 @@ ge n = 0 < n && n < _CURVE_Q
 -- For a, return x such that a = x x mod _CURVE_P.
 modsqrt :: Integer -> Maybe Integer
 modsqrt n = runST $ do
-    r   <- newSTRef 1
+    r   <- newSTRef 1 -- XX apparently STRef's are boxed
     num <- newSTRef n
     e   <- newSTRef ((_CURVE_P + 1) `div` 4)
     loop r num e
@@ -497,32 +499,39 @@ parse_integer = roll
 --   or BIP0340-style point (32 bytes).
 parse_point :: BS.ByteString -> Maybe Projective
 parse_point bs
-  | BS.length bs == 32 =                                -- bip0340 public key
-      fmap projective (lift (roll bs))
-  | otherwise = case BS.uncons bs of
-      Nothing -> Nothing
-      Just (fi -> h, t) ->
-        let (roll -> x, etc) = BS.splitAt (fi _CURVE_Q_BYTES) t
-            len = BS.length bs
-        in  if   len == 33 && (h == 0x02 || h == 0x03)  -- compressed
-            then if   not (fe x)
-                 then Nothing
-                 else do
-                   y <- modsqrt (weierstrass x)
-                   let yodd = I.integerTestBit y 0
-                       hodd = I.integerTestBit h 0
-                   pure $
-                     if   hodd /= yodd
-                     then Projective x (modP (negate y)) 1
-                     else Projective x y 1
-            else
-                 if   len == 65 && h == 0x04            -- uncompressed
-                 then let (roll -> y, _) = BS.splitAt (fi _CURVE_Q_BYTES) etc
-                          p = Projective x y 1
-                      in  if   valid p
-                          then Just p
-                          else Nothing
-                 else Nothing
+    | len == 32 = _parse_bip0340 bs
+    | len == 33 = _parse_compressed h t
+    | len == 65 = _parse_uncompressed h t
+    | otherwise = Nothing
+  where
+    len = BS.length bs
+    h = BU.unsafeIndex bs 0 -- lazy
+    t = BS.drop 1 bs
+
+_parse_bip0340 :: BS.ByteString -> Maybe Projective
+_parse_bip0340 = fmap projective . lift . roll
+
+_parse_compressed :: Word8 -> BS.ByteString -> Maybe Projective
+_parse_compressed h (roll -> x)
+  | h /= 0x02 && h /= 0x03 = Nothing
+  | not (fe x) = Nothing
+  | otherwise = do
+      y <- modsqrt (weierstrass x)
+      let yodd = B.testBit y 0
+          hodd = B.testBit h 0
+      pure $!
+        if   hodd /= yodd
+        then Projective x (modP (negate y)) 1
+        else Projective x y 1
+
+_parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
+_parse_uncompressed h (BS.splitAt (fi _CURVE_Q_BYTES) -> (roll -> x, roll -> y))
+  | h /= 0x04 = Nothing
+  | otherwise =
+      let p = Projective x y 1
+      in  if   valid p
+          then Just $! p
+          else Nothing
 
 -- schnorr --------------------------------------------------------------------
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
