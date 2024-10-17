@@ -496,7 +496,7 @@ mul p n
     | not (ge n) = error "ppad-secp256k1 (mul): scalar not in group"
     | otherwise  = loop _ZERO p n
   where
-    loop !r !d m
+    loop !r !d m -- XX timing concern
       | m <= 0 = r
       | otherwise =
           let nd = double d
@@ -508,7 +508,7 @@ mul p n
 
 -- | Parse an integer.
 parse_integer :: BS.ByteString -> Integer
-parse_integer = roll
+parse_integer = roll -- XX timing concern (use constant-time roll here)
 
 -- | Parse compressed point (33 bytes), uncompressed point (65 bytes),
 --   or BIP0340-style point (32 bytes).
@@ -569,9 +569,9 @@ sign_schnorr
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p_proj = mul _CURVE_G d'
+      let p_proj = mul _CURVE_G d'  -- XX timing concern
           Affine x_p y_p = affine p_proj
-          d | I.integerTestBit y_p 0 = _CURVE_Q - d'
+          d | I.integerTestBit y_p 0 = _CURVE_Q - d' -- XX timing concern
             | otherwise = d'
 
           bytes_d = unroll32 d
@@ -712,7 +712,7 @@ _sign_ecdsa ty hf x m
   | not (ge x) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
   | otherwise  = runST $ do
       -- RFC6979 sec 3.3a
-      let entropy = int2octets x
+      let entropy = int2octets x -- XX timing concern
           nonce   = bits2octets h
       drbg <- DRBG.new SHA256.hmac entropy nonce mempty
       -- RFC6979 sec 2.4
@@ -730,6 +730,7 @@ _sign_ecdsa ty hf x m
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
+              -- XX timing concern
               Just kinv -> remQ (remQ (h_modQ + remQ (x * r)) * kinv)
         if   r == 0 -- negligible probability
         then sign_loop g
