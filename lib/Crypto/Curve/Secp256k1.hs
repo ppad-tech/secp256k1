@@ -561,6 +561,11 @@ _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll -> x, roll -> y))
 --   and the cryptographic security of the signature scheme itself does
 --   not rely on it, so it is not strictly required; 32 zero bytes can
 --   be used in its stead (and can be supplied via 'mempty').
+--
+--   >>> import qualified System.Entropy as E
+--   >>> aux <- E.getEntropy 32
+--   >>> sign_schnorr sec msg aux
+--   "<64-byte schnorr signature>"
 sign_schnorr
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -604,6 +609,11 @@ sign_schnorr d' m a
 
 -- | Verify a 64-byte Schnorr signature for the provided message with
 --   the supplied public key.
+--
+--   >>> verify_schnorr msg pub <valid signature>
+--   True
+--   >>> verify_schnorr msg pub <invalid signature>
+--   False
 verify_schnorr
   :: BS.ByteString  -- ^ message
   -> Pub            -- ^ public key
@@ -655,7 +665,10 @@ data ECDSA = ECDSA {
     ecdsa_r :: !Integer
   , ecdsa_s :: !Integer
   }
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Generic)
+
+instance Show ECDSA where
+  show _ = "<ecdsa signature>"
 
 -- ECDSA signature type.
 data SigType =
@@ -674,8 +687,11 @@ data HashFlag =
 --   provided private key.
 --
 --   'sign_ecdsa' produces a "low-s" signature, as is commonly required
---   in applications. If you need a generic ECDSA signature, use
---   'sign_ecdsa_unrestricted'.
+--   in applications using secp256k1. If you need a generic ECDSA
+--   signature, use 'sign_ecdsa_unrestricted'.
+--
+--   >>> sign_ecdsa sec msg
+--   "<ecdsa signature>"
 sign_ecdsa
   :: Integer         -- ^ secret key
   -> BS.ByteString   -- ^ message
@@ -686,9 +702,11 @@ sign_ecdsa = _sign_ecdsa LowS Hash
 --   provided private key.
 --
 --   'sign_ecdsa_unrestricted' produces an unrestricted ECDSA signature,
---   which is less common in applications due to its inherent
---   malleability. If you need a conventional "low-s" signature, use
---   'sign_ecdsa'.
+--   which is less common in applications using secp256k1 due to the
+--   signature's inherent malleability. If you need a conventional
+--   "low-s" signature, use 'sign_ecdsa'.
+--
+--   >>> sign_ecdsa
 sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -759,7 +777,15 @@ low (ECDSA r s) = ECDSA r ms where
 {-# INLINE low #-}
 
 -- | Verify a "low-s" ECDSA signature for the provided message and
---   public key.
+--   public key,
+--
+--   Fails to verify otherwise-valid "high-s" signatures. If you need to
+--   verify generic ECDSA signatures, use 'verify_ecdsa_unrestricted'.
+--
+--   >>> verify_ecdsa msg pub valid_sig
+--   True
+--   >>> verify_ecdsa msg pub invalid_sig
+--   False
 verify_ecdsa
   :: BS.ByteString -- ^ message
   -> Pub           -- ^ public key
@@ -771,6 +797,11 @@ verify_ecdsa m p sig@(ECDSA _ s)
 
 -- | Verify an unrestricted ECDSA signature for the provided message and
 --   public key.
+--
+--   >>> verify_ecdsa_unrestricted msg pub valid_sig
+--   True
+--   >>> verify_ecdsa_unrestricted msg pub invalid_sig
+--   False
 verify_ecdsa_unrestricted
   :: BS.ByteString -- ^ message
   -> Pub           -- ^ public key
