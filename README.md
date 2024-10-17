@@ -52,12 +52,12 @@ accurate and safe from attacks targeting e.g. faulty nonce generation or
 malicious inputs for signature parameters.
 
 However, the signature schemes are **not** implemented so as to be
-constant-time with respect to secrets, and no effort has yet been
-made to quantify the degree to which they deviate from that. Perhaps
-obviously: you shouldn't deploy the implementations within in any
-situation where they can easily be used as an oracle to construct a
-[timing attack][timea], and you shouldn't give sophisticated malicious
-actors [access to your computer][flurl].
+constant-time (or constant-allocation) with respect to secrets, and no
+effort has yet been made to quantify the degree to which they deviate
+from that. Perhaps obviously: you shouldn't deploy the implementations
+within in any situation where they can easily be used as an oracle to
+construct a [timing attack][timea], and you shouldn't give sophisticated
+malicious actors [access to your computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
