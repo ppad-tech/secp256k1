@@ -26,10 +26,10 @@ library
   exposed-modules:
       Crypto.Curve.Secp256k1
   build-depends:
-      base
-    , bytestring
-    , ppad-hmac-drbg
-    , ppad-sha256
+      base >= 4.9 && < 5
+    , bytestring >= 0.9 && < 0.13
+    , ppad-hmac-drbg >= 0.1 && < 0.2
+    , ppad-sha256 >= 0.2 && < 0.3
 
 test-suite secp256k1-tests
   type:                exitcode-stdio-1.0
