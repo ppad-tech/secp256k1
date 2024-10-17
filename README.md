@@ -43,7 +43,7 @@ Haddocks (API documentation, etc.) are hosted at
 This library is in a **pre-release** state. It ultimately aims at the
 maximum security achievable in a garbage-collected language under an
 optimizing compiler such as GHC, in which strict constant-timeness can
-be challenging to achieve, but we're not there quite yet.
+be [challenging to achieve][const], but we're not there quite yet.
 
 The Schnorr implementation within has been tested against the [official
 BIP0340 vectors][ut340], and ECDSA has been tested against the relevant
@@ -89,3 +89,4 @@ to get a REPL for the main library.
 [wyche]: https://github.com/C2SP/wycheproof
 [timea]: https://en.wikipedia.org/wiki/Timing_attack
 [flurl]: https://eprint.iacr.org/2014/140.pdf
+[const]: https://www.chosenplaintext.ca/articles/beginners-guide-constant-time-cryptography.html
