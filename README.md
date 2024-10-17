@@ -52,11 +52,12 @@ accurate and safe from attacks targeting e.g. faulty nonce generation or
 malicious inputs for signature parameters.
 
 However, the signature schemes are **not** implemented so as to be
-constant-time with respect to secrets, and no effort has yet been made
-to quantify the degree to which they deviate from that. Perhaps
+constant-time with respect to secrets, and no effort has yet been
+made to quantify the degree to which they deviate from that. Perhaps
 obviously: you shouldn't deploy the implementations within in any
 situation where they can easily be used as an oracle to construct a
-[timing attack][timea].
+[timing attack][timea], and you shouldn't give sophisticated malicious
+actors [access to your computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
@@ -87,3 +88,4 @@ to get a REPL for the main library.
 [hadoc]: https://docs.ppad.tech/secp256k1
 [wyche]: https://github.com/C2SP/wycheproof
 [timea]: https://en.wikipedia.org/wiki/Timing_attack
+[flurl]: https://eprint.iacr.org/2014/140.pdf
