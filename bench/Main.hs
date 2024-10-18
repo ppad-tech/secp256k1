@@ -20,6 +20,7 @@ main = defaultMain [
     parse_point
   , add
   , mul
+  , derive_public
   , schnorr
   , ecdsa
   ]
@@ -57,6 +58,16 @@ mul = env setup $ \x ->
     bgroup "mul" [
       bench "2 G" $ nf (S.mul S._CURVE_G) 2
     , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
+    ]
+  where
+    setup = pure . S.parse_int256 $ B16.decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+
+derive_public :: Benchmark
+derive_public = env setup $ \x ->
+    bgroup "derive_public" [
+      bench "sk = 2" $ nf S.derive_public 2
+    , bench "sk = 2 ^ 255 - 19" $ nf S.derive_public x
     ]
   where
     setup = pure . S.parse_int256 $ B16.decodeLenient

@@ -54,6 +54,18 @@ so as to execute algorithmically in time constant with respect to secret
 data:
 
 ```
+  benchmarking derive_public/sk = 2
+  time                 1.703 ms   (1.680 ms .. 1.728 ms)
+                       0.997 R²   (0.995 R² .. 0.999 R²)
+  mean                 1.704 ms   (1.684 ms .. 1.730 ms)
+  std dev              81.99 μs   (67.86 μs .. 98.34 μs)
+
+  benchmarking derive_public/sk = 2 ^ 255 - 19
+  time                 1.686 ms   (1.654 ms .. 1.730 ms)
+                       0.998 R²   (0.997 R² .. 0.999 R²)
+  mean                 1.658 ms   (1.645 ms .. 1.673 ms)
+  std dev              44.75 μs   (34.84 μs .. 59.81 μs)
+
   benchmarking schnorr/sign_schnorr (small secret)
   time                 5.388 ms   (5.345 ms .. 5.438 ms)
                        1.000 R²   (0.999 R² .. 1.000 R²)
