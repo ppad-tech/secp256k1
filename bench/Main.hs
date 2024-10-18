@@ -53,12 +53,14 @@ add = bgroup "add" [
   ]
 
 mul :: Benchmark
-mul = bgroup "mul" [
-    bench "3 p (trivial projective point)" $ nf (S.mul p) 3
-  , bench "3 r (nontrivial projective point)" $ nf (S.mul r) 3
-  , bench "<large group element> p" $
-      nf (S.mul p) (S._CURVE_Q - 0xFFFFFFFFFFFFFFFFFFFFFFFF)
-  ]
+mul = env setup $ \x ->
+    bgroup "mul" [
+      bench "2 G" $ nf (S.mul S._CURVE_G) 2
+    , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
+    ]
+  where
+    setup = pure . S.parse_int256 $ B16.decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 schnorr :: Benchmark
 schnorr = bgroup "schnorr" [

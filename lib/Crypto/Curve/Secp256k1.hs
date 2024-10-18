@@ -56,6 +56,7 @@ module Crypto.Curve.Secp256k1 (
   , _sign_ecdsa_no_hash
   , _CURVE_P
   , _CURVE_Q
+  , _CURVE_G
   ) where
 
 import Control.Monad (when)
@@ -537,26 +538,20 @@ double (Projective x y z) = runST $ do
   modifySTRef' x3 (\rx3 -> modP (rx3 + rx3))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
--- XX must take into account integer size
-
 -- Timing-safe scalar multiplication of secp256k1 points.
 mul :: Projective -> Integer -> Projective
-mul p _MAYBE_SECRET
-    | not (ge _MAYBE_SECRET) =
-        error "ppad-secp256k1 (mul): scalar not in group"
-    | otherwise  = loop _ZERO _CURVE_G p _MAYBE_SECRET
+mul p _SECRET
+    | not (ge _SECRET) = error "ppad-secp256k1 (mul): scalar not in group"
+    | otherwise  = loop (0 :: Int) _ZERO _CURVE_G p _SECRET
   where
-    loop !r !f !d m
-      | m <= 0 = r
+    loop !j !acc !f !d !m
+      | j == _CURVE_Q_BITS = acc
       | otherwise =
           let nd = double d
               nm = I.integerShiftR m 1
-              ev = I.integerTestBit m 0
-              nr | ev = add r d
-                 | otherwise = r
-              nf | not ev = add f d
-                 | otherwise = f
-          in  loop nr nf nd nm
+          in  if   I.integerTestBit m 0
+              then loop (succ j) (add acc d) f nd nm
+              else loop (succ j) acc (add f d) nd nm
 {-# NOINLINE mul #-}
 
 -- Timing-unsafe scalar multiplication of secp256k1 points.
@@ -707,8 +702,8 @@ verify_schnorr m (affine -> Affine x_p _) sig
             then False
             else let e = modQ . roll32 $ hash_tagged "BIP0340/challenge"
                            (unroll32 r <> unroll32 x_P <> m)
-                     dif = add (mul _CURVE_G s)
-                               (neg (mul (projective capP) e))
+                     dif = add (mul_unsafe _CURVE_G s)
+                               (neg (mul_unsafe (projective capP) e))
                  in  if   dif == _ZERO
                      then False
                      else let Affine x_R y_R = affine dif
@@ -900,7 +895,7 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
             Just si -> si
           u1   = remQ (e * s_inv)
           u2   = remQ (r * s_inv)
-          capR = add (mul _CURVE_G u1) (mul p u2)
+          capR = add (mul_unsafe _CURVE_G u1) (mul_unsafe p u2)
       in  if   capR == _ZERO
           then False
           else let Affine (modQ -> v) _ = affine capR
