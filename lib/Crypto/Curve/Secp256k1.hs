@@ -33,7 +33,8 @@ module Crypto.Curve.Secp256k1 (
   , verify_ecdsa_unrestricted
 
   -- * Parsing
-  , parse_integer
+  , Word256(..)
+  , parse_int256
   , parse_point
 
   -- Elliptic curve group operations
@@ -41,6 +42,7 @@ module Crypto.Curve.Secp256k1 (
   , add
   , double
   , mul
+  , mul_unsafe
 
   -- Coordinate systems and transformations
   , Affine(..)
@@ -60,11 +62,12 @@ import Control.Monad (when)
 import Control.Monad.ST
 import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
+import Data.Bits ((.|.))
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BU
 import Data.STRef
-import Data.Word (Word8)
+import Data.Word (Word8, Word64)
 import GHC.Generics
 import GHC.Natural
 import qualified GHC.Num.Integer as I
@@ -100,10 +103,49 @@ modinv a m = case I.integerRecipMod# a m of
 xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
 xor = BS.packZipWith B.xor
 
--- big-endian bytestring decoding
+-- arbitrary-size big-endian bytestring decoding
 roll :: BS.ByteString -> Integer
 roll = BS.foldl' alg 0 where
-  alg a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+  alg !a (fi -> !b) = (a `I.integerShiftL` 8) `I.integerOr` b
+
+data Word256 = Word256
+    {-# UNPACK #-} !Word64
+    {-# UNPACK #-} !Word64
+    {-# UNPACK #-} !Word64
+    {-# UNPACK #-} !Word64
+  deriving (Eq, Show, Generic)
+
+word256_to_integer :: Word256 -> Integer
+word256_to_integer (Word256 w0 w1 w2 w3) =
+      (fi w0 `B.shiftL` 192)
+  .|. (fi w1 `B.shiftL` 128)
+  .|. (fi w2 `B.shiftL` 64)
+  .|. fi w3
+{-# INLINE word256_to_integer #-}
+
+-- /Note:/ there can be substantial differences in execution time
+-- when this function is called with "extreme" inputs. For example: a
+-- bytestring consisting entirely of 0x00 bytes will parse more quickly
+-- than one consisting of entirely 0xFF bytes. For appropriately-random
+-- inputs, timings should be indistinguishable.
+
+-- 256-bit big-endian bytestring decoding. the input size is not checked!
+roll32 :: BS.ByteString -> Integer
+roll32 bs = word256_to_integer $! (go 0 0 0 0 0) where
+  go !acc0 !acc1 !acc2 !acc3 !j
+    | j == 32  = Word256 acc0 acc1 acc2 acc3
+    | j < 8    =
+        let b = fi (BU.unsafeIndex bs j)
+        in  go ((acc0 `B.shiftL` 8) .|. b) acc1 acc2 acc3 (j + 1)
+    | j < 16   =
+        let b = fi (BU.unsafeIndex bs j)
+        in go acc0 ((acc1 `B.shiftL` 8) .|. b) acc2 acc3 (j + 1)
+    | j < 24   =
+        let b = fi (BU.unsafeIndex bs j)
+        in go acc0 acc1 ((acc2 `B.shiftL` 8) .|. b) acc3 (j + 1)
+    | otherwise =
+        let b = fi (BU.unsafeIndex bs j)
+        in go acc0 acc1 acc2 ((acc3 `B.shiftL` 8) .|. b) (j + 1)
 
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
@@ -489,28 +531,53 @@ double (Projective x y z) = runST $ do
   modifySTRef' x3 (\rx3 -> modP (rx3 + rx3))
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
--- Scalar multiplication of secp256k1 points.
+-- XX must take into account integer size
+
+-- Timing-safe scalar multiplication of secp256k1 points.
 mul :: Projective -> Integer -> Projective
-mul p n
+mul p _MAYBE_SECRET
+    | not (ge _MAYBE_SECRET) =
+        error "ppad-secp256k1 (mul): scalar not in group"
+    | otherwise  = loop _ZERO _CURVE_G p _MAYBE_SECRET
+  where
+    loop !r !f !d m
+      | m <= 0 = r
+      | otherwise =
+          let nd = double d
+              nm = I.integerShiftR m 1
+              ev = I.integerTestBit m 0
+              nr | ev = add r d
+                 | otherwise = r
+              nf | not ev = add f d
+                 | otherwise = f
+          in  loop nr nf nd nm
+{-# NOINLINE mul #-}
+
+-- Timing-unsafe scalar multiplication of secp256k1 points.
+--
+-- Don't use this function if the scalar could potentially be a secret.
+mul_unsafe :: Projective -> Integer -> Projective
+mul_unsafe p n
     | n == 0 = _ZERO
-    | not (ge n) = error "ppad-secp256k1 (mul): scalar not in group"
+    | not (ge n) =
+        error "ppad-secp256k1 (mul_unsafe): scalar not in group"
     | otherwise  = loop _ZERO p n
   where
-    loop !r !d m -- XX timing concern
+    loop !r !d m
       | m <= 0 = r
       | otherwise =
           let nd = double d
               nm = I.integerShiftR m 1
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
-{-# NOINLINE mul #-}
 
 -- parsing --------------------------------------------------------------------
 
--- | Parse an integer.
-parse_integer :: BS.ByteString -> Integer
-parse_integer = roll -- XX timing concern (use constant-time roll here)
-{-# NOINLINE parse_integer #-}
+parse_int256 :: BS.ByteString -> Integer
+parse_int256 bs
+  | BS.length bs /= 32 =
+      error "ppad-secp256k1 (parse_int256): requires exactly 32-byte input"
+  | otherwise = roll32 bs
 
 -- | Parse compressed point (33 bytes), uncompressed point (65 bytes),
 --   or BIP0340-style point (32 bytes).
@@ -525,11 +592,13 @@ parse_point bs
     h = BU.unsafeIndex bs 0 -- lazy
     t = BS.drop 1 bs
 
+-- input is guaranteed to be 32B in length
 _parse_bip0340 :: BS.ByteString -> Maybe Projective
-_parse_bip0340 = fmap projective . lift . roll
+_parse_bip0340 = fmap projective . lift . roll32
 
+-- bytestring input is guaranteed to be 32B in length
 _parse_compressed :: Word8 -> BS.ByteString -> Maybe Projective
-_parse_compressed h (roll -> x)
+_parse_compressed h (roll32 -> x)
   | h /= 0x02 && h /= 0x03 = Nothing
   | not (fe x) = Nothing
   | otherwise = do
@@ -541,8 +610,9 @@ _parse_compressed h (roll -> x)
         then Projective x (modP (negate y)) 1
         else Projective x y 1
 
+-- bytestring input is guaranteed to be 64B in length
 _parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
-_parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll -> x, roll -> y))
+_parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
   | h /= 0x04 = Nothing
   | otherwise =
       let p = Projective x y 1
@@ -576,7 +646,7 @@ sign_schnorr
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p_proj = mul _CURVE_G d'  -- XX timing concern
+      let p_proj = mul_unsafe _CURVE_G d'  -- XX timing concern
           Affine x_p y_p = affine p_proj
           d | I.integerTestBit y_p 0 = _CURVE_Q - d' -- XX timing concern
             | otherwise = d'
@@ -588,17 +658,17 @@ sign_schnorr d' m a
           bytes_p = unroll32 x_p
           rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
 
-          k' = modQ (roll rand)
+          k' = modQ (roll32 rand)
 
       in  if   k' == 0 -- negligible probability
           then error "ppad-secp256k1 (sign_schnorr): invalid k"
           else
-            let Affine x_r y_r = affine (mul _CURVE_G k')
+            let Affine x_r y_r = affine (mul_unsafe _CURVE_G k')
                 k | I.integerTestBit y_r 0 = _CURVE_Q - k'
                   | otherwise = k'
 
                 bytes_r = unroll32 x_r
-                e = modQ . roll . hash_tagged "BIP0340/challenge"
+                e = modQ . roll32 . hash_tagged "BIP0340/challenge"
                   $ bytes_r <> bytes_p <> m
 
                 bytes_ked = unroll32 (modQ (k + e * d))
@@ -608,7 +678,6 @@ sign_schnorr d' m a
             in  if   verify_schnorr m p_proj sig
                 then sig
                 else error "ppad-secp256k1 (sign_schnorr): invalid signature"
-{-# NOINLINE sign_schnorr #-}
 
 -- | Verify a 64-byte Schnorr signature for the provided message with
 --   the supplied public key.
@@ -622,19 +691,22 @@ verify_schnorr
   -> Pub            -- ^ public key
   -> BS.ByteString  -- ^ 64-byte Schnorr signature
   -> Bool
-verify_schnorr m (affine -> Affine x_p _) sig = case lift x_p of
-  Nothing -> False
-  Just capP@(Affine x_P _) ->
-    let (roll -> r, roll -> s) = BS.splitAt 32 sig
-    in  if   r >= _CURVE_P || s >= _CURVE_Q
-        then False
-        else let e = modQ . roll $ hash_tagged "BIP0340/challenge"
-                       (unroll32 r <> unroll32 x_P <> m)
-                 dif = add (mul _CURVE_G s) (neg (mul (projective capP) e))
-             in  if   dif == _ZERO
-                 then False
-                 else let Affine x_R y_R = affine dif
-                      in  not (I.integerTestBit y_R 0 || x_R /= r)
+verify_schnorr m (affine -> Affine x_p _) sig
+  | BS.length sig /= 64 = False
+  | otherwise = case lift x_p of
+      Nothing -> False
+      Just capP@(Affine x_P _) ->
+        let (roll32 -> r, roll32 -> s) = BS.splitAt 32 sig
+        in  if   r >= _CURVE_P || s >= _CURVE_Q
+            then False
+            else let e = modQ . roll32 $ hash_tagged "BIP0340/challenge"
+                           (unroll32 r <> unroll32 x_P <> m)
+                     dif = add (mul_unsafe _CURVE_G s)
+                               (neg (mul_unsafe (projective capP) e))
+                 in  if   dif == _ZERO
+                     then False
+                     else let Affine x_R y_R = affine dif
+                          in  not (I.integerTestBit y_R 0 || x_R /= r)
 
 -- ecdsa ----------------------------------------------------------------------
 -- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
@@ -747,7 +819,7 @@ _sign_ecdsa ty hf x m
 
       sign_loop g = do
         k <- gen_k g
-        let kg = mul _CURVE_G k
+        let kg = mul_unsafe _CURVE_G k
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
@@ -759,7 +831,6 @@ _sign_ecdsa ty hf x m
              in  case ty of
                    Unrestricted -> pure sig
                    LowS -> pure (low sig)
-{-# NOINLINE _sign_ecdsa #-}
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer
@@ -823,7 +894,7 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
             Just si -> si
           u1   = remQ (e * s_inv)
           u2   = remQ (r * s_inv)
-          capR = add (mul _CURVE_G u1) (mul p u2)
+          capR = add (mul_unsafe _CURVE_G u1) (mul_unsafe p u2)
       in  if   capR == _ZERO
           then False
           else let Affine (modQ -> v) _ = affine capR

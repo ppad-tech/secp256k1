@@ -13,6 +13,7 @@ import qualified Crypto.Curve.Secp256k1 as S
 instance NFData S.Projective
 instance NFData S.Affine
 instance NFData S.ECDSA
+instance NFData S.Word256
 
 main :: IO ()
 main = defaultMain [
@@ -29,6 +30,18 @@ parse_point = bgroup "parse_point" [
   , bench "uncompressed" $ nf S.parse_point t_bs
   , bench "bip0340" $ nf S.parse_point (BS.drop 1 p_bs)
   ]
+
+parse_integer :: Benchmark
+parse_integer = env setup $ \ ~(small, big) ->
+    bgroup "parse_int256" [
+      bench "parse_int256 (small)" $ nf S.parse_int256 small
+    , bench "parse_int256 (big)" $ nf S.parse_int256 big
+    ]
+  where
+    setup = do
+      let small = BS.replicate 32 0x00
+          big   = BS.replicate 32 0xFF
+      pure (small, big)
 
 add :: Benchmark
 add = bgroup "add" [
@@ -56,7 +69,7 @@ schnorr = bgroup "schnorr" [
 ecdsa :: Benchmark
 ecdsa = bgroup "ecdsa" [
     bench "sign_ecdsa" $ nf (S.sign_ecdsa s_sk) s_msg
-  -- , bench "verify_ecdsa" $ nf (S.verify_ecdsa e_msg t) e_sig
+  -- , bench "verify_ecdsa" $ nf (S.verify_ecdsa e_msg t) e_sig -- XX inputs
   ]
 
 p_bs :: BS.ByteString
@@ -104,7 +117,7 @@ t = case S.parse_point t_bs of
   Just !pt -> pt
 
 s_sk :: Integer
-s_sk = S.parse_integer . B16.decodeLenient $
+s_sk = S.parse_int256 . B16.decodeLenient $
   "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
 
 s_sig :: BS.ByteString
