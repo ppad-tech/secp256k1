@@ -63,16 +63,26 @@ mul = env setup $ \x ->
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 schnorr :: Benchmark
-schnorr = bgroup "schnorr" [
-    bench "sign_schnorr" $ nf (S.sign_schnorr s_sk s_msg) s_aux
-  , bench "verify_schnorr" $ nf (S.verify_schnorr s_msg s_pk) s_sig
-  ]
+schnorr = env setup $ \big ->
+    bgroup "schnorr" [
+      bench "sign_schnorr (small secret)" $ nf (S.sign_schnorr 2 s_msg) s_aux
+    , bench "sign_schnorr (large secret)" $ nf (S.sign_schnorr big s_msg) s_aux
+    , bench "verify_schnorr" $ nf (S.verify_schnorr s_msg s_pk) s_sig
+    ]
+  where
+    setup = pure . S.parse_int256 $ B16.decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 ecdsa :: Benchmark
-ecdsa = bgroup "ecdsa" [
-    bench "sign_ecdsa" $ nf (S.sign_ecdsa s_sk) s_msg
-  -- , bench "verify_ecdsa" $ nf (S.verify_ecdsa e_msg t) e_sig -- XX inputs
-  ]
+ecdsa = env setup $ \big ->
+    bgroup "ecdsa" [
+      bench "sign_ecdsa (small)" $ nf (S.sign_ecdsa 2) s_msg
+    , bench "sign_ecdsa (large)" $ nf (S.sign_ecdsa big) s_msg
+    -- , bench "verify_ecdsa" $ nf (S.verify_ecdsa e_msg t) e_sig -- XX inputs
+    ]
+  where
+    setup = pure . S.parse_int256 $ B16.decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 p_bs :: BS.ByteString
 p_bs = B16.decodeLenient

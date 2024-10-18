@@ -644,13 +644,13 @@ sign_schnorr
   -> BS.ByteString  -- ^ message
   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
   -> BS.ByteString  -- ^ 64-byte Schnorr signature
-sign_schnorr d' m a
-  | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
+sign_schnorr _SECRET m a
+  | not (ge _SECRET) = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p_proj = mul _CURVE_G d'
+      let p_proj = mul _CURVE_G _SECRET
           Affine x_p y_p = affine p_proj
-          d | I.integerTestBit y_p 0 = _CURVE_Q - d'
-            | otherwise = d'
+          d | I.integerTestBit y_p 0 = _CURVE_Q - _SECRET
+            | otherwise = _SECRET
 
           bytes_d = unroll32 d
           h_a = hash_tagged "BIP0340/aux" a
@@ -802,11 +802,11 @@ _sign_ecdsa_no_hash
 _sign_ecdsa_no_hash = _sign_ecdsa LowS NoHash
 
 _sign_ecdsa :: SigType -> HashFlag -> Integer -> BS.ByteString -> ECDSA
-_sign_ecdsa ty hf x m
-  | not (ge x) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
+_sign_ecdsa ty hf _SECRET m
+  | not (ge _SECRET) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
   | otherwise  = runST $ do
       -- RFC6979 sec 3.3a
-      let entropy = int2octets x -- XX timing concern
+      let entropy = int2octets _SECRET -- XX timing concern
           nonce   = bits2octets h
       drbg <- DRBG.new SHA256.hmac entropy nonce mempty
       -- RFC6979 sec 2.4
@@ -825,7 +825,7 @@ _sign_ecdsa ty hf x m
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
               -- XX timing concern
-              Just kinv -> remQ (remQ (h_modQ + remQ (x * r)) * kinv)
+              Just kinv -> remQ (remQ (h_modQ + remQ (_SECRET * r)) * kinv)
         if   r == 0 -- negligible probability
         then sign_loop g
         else let !sig = ECDSA r s
