@@ -503,12 +503,14 @@ mul p n
               nm = I.integerShiftR m 1
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
+{-# NOINLINE mul #-}
 
 -- parsing --------------------------------------------------------------------
 
 -- | Parse an integer.
 parse_integer :: BS.ByteString -> Integer
 parse_integer = roll -- XX timing concern (use constant-time roll here)
+{-# NOINLINE parse_integer #-}
 
 -- | Parse compressed point (33 bytes), uncompressed point (65 bytes),
 --   or BIP0340-style point (32 bytes).
@@ -606,6 +608,7 @@ sign_schnorr d' m a
             in  if   verify_schnorr m p_proj sig
                 then sig
                 else error "ppad-secp256k1 (sign_schnorr): invalid signature"
+{-# NOINLINE sign_schnorr #-}
 
 -- | Verify a 64-byte Schnorr signature for the provided message with
 --   the supplied public key.
@@ -756,6 +759,7 @@ _sign_ecdsa ty hf x m
              in  case ty of
                    Unrestricted -> pure sig
                    LowS -> pure (low sig)
+{-# NOINLINE _sign_ecdsa #-}
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer
