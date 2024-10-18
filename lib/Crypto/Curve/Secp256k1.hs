@@ -151,6 +151,8 @@ roll32 bs = word256_to_integer $! (go 0 0 0 0 0) where
         in go acc0 acc1 acc2 ((acc3 `B.shiftL` 8) .|. b) (j + 1)
 {-# INLINE roll32 #-}
 
+-- XX surely there's a better way to do this
+
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
 unroll i = case i of

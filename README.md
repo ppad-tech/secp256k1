@@ -40,24 +40,50 @@ Haddocks (API documentation, etc.) are hosted at
 
 ## Security
 
-This library is in a **pre-release** state. It ultimately aims at the
-maximum security achievable in a garbage-collected language under an
-optimizing compiler such as GHC, in which strict constant-timeness can
-be [challenging to achieve][const], but we're not there quite yet.
+This library aims at the maximum security achievable in a
+garbage-collected language under an optimizing compiler such as GHC, in
+which strict constant-timeness can be [challenging to achieve][const].
 
 The Schnorr implementation within has been tested against the [official
 BIP0340 vectors][ut340], and ECDSA has been tested against the relevant
 [Wycheproof vectors][wyche], so their implementations are likely to be
 accurate and safe from attacks targeting e.g. faulty nonce generation or
-malicious inputs for signature parameters.
+malicious inputs for signature parameters. Timing-sensitive operations,
+e.g. elliptic curve scalar multiplication, have been explicitly written
+so as to execute algorithmically in time constant with respect to secret
+data:
 
-However, the signature schemes are **not** implemented so as to be
-constant-time (or constant-allocation) with respect to secrets, and no
-effort has yet been made to quantify the degree to which they deviate
-from that. Perhaps obviously: you shouldn't deploy the implementations
-within in any situation where they can easily be used as an oracle to
-construct a [timing attack][timea], and you shouldn't give sophisticated
-malicious actors [access to your computer][flurl].
+```
+  benchmarking schnorr/sign_schnorr (small secret)
+  time                 5.388 ms   (5.345 ms .. 5.438 ms)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 5.429 ms   (5.410 ms .. 5.449 ms)
+  std dev              58.14 μs   (48.93 μs .. 68.69 μs)
+
+  benchmarking schnorr/sign_schnorr (large secret)
+  time                 5.364 ms   (5.324 ms .. 5.410 ms)
+                       0.999 R²   (0.999 R² .. 1.000 R²)
+  mean                 5.443 ms   (5.414 ms .. 5.486 ms)
+  std dev              102.1 μs   (74.16 μs .. 146.4 μs)
+
+  benchmarking ecdsa/sign_ecdsa (small secret)
+  time                 1.740 ms   (1.726 ms .. 1.753 ms)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 1.752 ms   (1.744 ms .. 1.761 ms)
+  std dev              32.33 μs   (26.12 μs .. 43.34 μs)
+
+  benchmarking ecdsa/sign_ecdsa (large secret)
+  time                 1.748 ms   (1.731 ms .. 1.766 ms)
+                       0.999 R²   (0.998 R² .. 0.999 R²)
+  mean                 1.756 ms   (1.743 ms .. 1.771 ms)
+  std dev              48.99 μs   (40.83 μs .. 62.77 μs)
+```
+
+Despite all that, take reasonable security precautions as appropriate.
+You probably shouldn't deploy the implementations within in any
+situation where they could easily be used as an oracle to construct a
+[timing attack][timea], and you shouldn't give sophisticated malicious
+actors [access to your computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
