@@ -15,7 +15,7 @@ A sample GHCi session:
   > import qualified Crypto.Curve.Secp256k1 as Secp256k1
   >
   > -- secret, public keys
-  > let sec = Secp256k1.parse_integer "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
+  > let sec = Secp256k1.parse_int256 "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
   > let Just pub = Secp256k1.parse_point "DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659"
   >
   > let msg = "i approve of this message"
