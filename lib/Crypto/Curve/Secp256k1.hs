@@ -43,7 +43,7 @@ module Crypto.Curve.Secp256k1 (
   , double
   , mul
   , mul_unsafe
-  , derive_public
+  , derive_pub
 
   -- Coordinate systems and transformations
   , Affine(..)
@@ -580,15 +580,15 @@ mul_unsafe p n
 --
 --   >>> import qualified System.Entropy as E
 --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
---   >>> derive_public sk
+--   >>> derive_pub sk
 --   "<secp256k1 point>"
-derive_public :: Integer -> Pub
-derive_public _SECRET
+derive_pub :: Integer -> Pub
+derive_pub _SECRET
   | not (ge _SECRET) =
-      error "ppad-secp256k1 (derive_public): invalid secret key"
+      error "ppad-secp256k1 (derive_pub): invalid secret key"
   | otherwise =
       mul _CURVE_G _SECRET
-{-# NOINLINE derive_public #-}
+{-# NOINLINE derive_pub #-}
 
 -- parsing --------------------------------------------------------------------
 

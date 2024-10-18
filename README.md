@@ -38,6 +38,43 @@ A sample GHCi session:
 Haddocks (API documentation, etc.) are hosted at
 [docs.ppad.tech/secp256k1][hadoc].
 
+## Performance
+
+The aim is best-in-class performance for pure, highly-auditable Haskell
+code.
+
+Current benchmark figures on my mid-2020 MacBook Air look like (use
+`cabal bench` to run the benchmark suite):
+
+```
+  benchmarking schnorr/sign_schnorr
+  time                 5.663 ms   (5.618 ms .. 5.714 ms)
+                       0.999 R²   (0.999 R² .. 1.000 R²)
+  mean                 5.683 ms   (5.652 ms .. 5.715 ms)
+  std dev              98.56 μs   (78.45 μs .. 127.0 μs)
+
+  benchmarking schnorr/verify_schnorr
+  time                 2.323 ms   (2.301 ms .. 2.360 ms)
+                       0.999 R²   (0.997 R² .. 0.999 R²)
+  mean                 2.342 ms   (2.328 ms .. 2.363 ms)
+  std dev              57.68 μs   (43.66 μs .. 86.22 μs)
+  variance introduced by outliers: 11% (moderately inflated)
+
+  benchmarking ecdsa/sign_ecdsa
+  time                 1.756 ms   (1.741 ms .. 1.774 ms)
+                       0.999 R²   (0.998 R² .. 1.000 R²)
+  mean                 1.773 ms   (1.760 ms .. 1.788 ms)
+  std dev              45.40 μs   (35.58 μs .. 57.52 μs)
+  variance introduced by outliers: 13% (moderately inflated)
+
+  benchmarking ecdsa/verify_ecdsa
+  time                 2.300 ms   (2.270 ms .. 2.331 ms)
+                       0.998 R²   (0.997 R² .. 0.999 R²)
+  mean                 2.318 ms   (2.297 ms .. 2.345 ms)
+  std dev              81.45 μs   (65.15 μs .. 105.2 μs)
+  variance introduced by outliers: 21% (moderately inflated)
+```
+
 ## Security
 
 This library aims at the maximum security achievable in a

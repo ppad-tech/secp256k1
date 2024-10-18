@@ -20,7 +20,7 @@ main = defaultMain [
     parse_point
   , add
   , mul
-  , derive_public
+  , derive_pub
   , schnorr
   , ecdsa
   ]
@@ -63,11 +63,11 @@ mul = env setup $ \x ->
     setup = pure . S.parse_int256 $ B16.decodeLenient
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
-derive_public :: Benchmark
-derive_public = env setup $ \x ->
-    bgroup "derive_public" [
-      bench "sk = 2" $ nf S.derive_public 2
-    , bench "sk = 2 ^ 255 - 19" $ nf S.derive_public x
+derive_pub :: Benchmark
+derive_pub = env setup $ \x ->
+    bgroup "derive_pub" [
+      bench "sk = 2" $ nf S.derive_pub 2
+    , bench "sk = 2 ^ 255 - 19" $ nf S.derive_pub x
     ]
   where
     setup = pure . S.parse_int256 $ B16.decodeLenient
@@ -85,15 +85,20 @@ schnorr = env setup $ \big ->
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 ecdsa :: Benchmark
-ecdsa = env setup $ \big ->
+ecdsa = env setup $ \ ~(big, pub, msg, sig) ->
     bgroup "ecdsa" [
       bench "sign_ecdsa (small)" $ nf (S.sign_ecdsa 2) s_msg
     , bench "sign_ecdsa (large)" $ nf (S.sign_ecdsa big) s_msg
-    -- , bench "verify_ecdsa" $ nf (S.verify_ecdsa e_msg t) e_sig -- XX inputs
+    , bench "verify_ecdsa" $ nf (S.verify_ecdsa msg pub) sig
     ]
   where
-    setup = pure . S.parse_int256 $ B16.decodeLenient
-      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+    setup = do
+      let big = S.parse_int256 $ B16.decodeLenient
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+          pub = S.derive_pub big
+          msg = "i approve of this message"
+          sig = S.sign_ecdsa big s_msg
+      pure (big, pub, msg, sig)
 
 p_bs :: BS.ByteString
 p_bs = B16.decodeLenient
