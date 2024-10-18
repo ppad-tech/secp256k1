@@ -128,6 +128,8 @@ word256_to_integer (Word256 w0 w1 w2 w3) =
 -- bytestring consisting entirely of 0x00 bytes will parse more quickly
 -- than one consisting of entirely 0xFF bytes. For appropriately-random
 -- inputs, timings should be indistinguishable.
+--
+-- Using Word256 under the hood speeds up this function dramatically.
 
 -- 256-bit big-endian bytestring decoding. the input size is not checked!
 roll32 :: BS.ByteString -> Integer
@@ -146,6 +148,7 @@ roll32 bs = word256_to_integer $! (go 0 0 0 0 0) where
     | otherwise =
         let b = fi (BU.unsafeIndex bs j)
         in go acc0 acc1 acc2 ((acc3 `B.shiftL` 8) .|. b) (j + 1)
+{-# INLINE roll32 #-}
 
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
@@ -164,6 +167,9 @@ unroll32 (unroll -> u)
     | otherwise = u
   where
     l = BS.length u
+
+-- replacing the following w/a series of functions with the hashed tags
+-- hard-coded is possible
 
 -- (bip0340) tagged hash function
 hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
@@ -646,9 +652,9 @@ sign_schnorr
 sign_schnorr d' m a
   | not (ge d') = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p_proj = mul_unsafe _CURVE_G d'  -- XX timing concern
+      let p_proj = mul _CURVE_G d'
           Affine x_p y_p = affine p_proj
-          d | I.integerTestBit y_p 0 = _CURVE_Q - d' -- XX timing concern
+          d | I.integerTestBit y_p 0 = _CURVE_Q - d'
             | otherwise = d'
 
           bytes_d = unroll32 d
@@ -663,7 +669,7 @@ sign_schnorr d' m a
       in  if   k' == 0 -- negligible probability
           then error "ppad-secp256k1 (sign_schnorr): invalid k"
           else
-            let Affine x_r y_r = affine (mul_unsafe _CURVE_G k')
+            let Affine x_r y_r = affine (mul _CURVE_G k')
                 k | I.integerTestBit y_r 0 = _CURVE_Q - k'
                   | otherwise = k'
 
@@ -701,8 +707,8 @@ verify_schnorr m (affine -> Affine x_p _) sig
             then False
             else let e = modQ . roll32 $ hash_tagged "BIP0340/challenge"
                            (unroll32 r <> unroll32 x_P <> m)
-                     dif = add (mul_unsafe _CURVE_G s)
-                               (neg (mul_unsafe (projective capP) e))
+                     dif = add (mul _CURVE_G s)
+                               (neg (mul (projective capP) e))
                  in  if   dif == _ZERO
                      then False
                      else let Affine x_R y_R = affine dif
@@ -819,7 +825,7 @@ _sign_ecdsa ty hf x m
 
       sign_loop g = do
         k <- gen_k g
-        let kg = mul_unsafe _CURVE_G k
+        let kg = mul _CURVE_G k
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
@@ -894,7 +900,7 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
             Just si -> si
           u1   = remQ (e * s_inv)
           u2   = remQ (r * s_inv)
-          capR = add (mul_unsafe _CURVE_G u1) (mul_unsafe p u2)
+          capR = add (mul _CURVE_G u1) (mul p u2)
       in  if   capR == _ZERO
           then False
           else let Affine (modQ -> v) _ = affine capR
