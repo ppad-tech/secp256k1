@@ -4,6 +4,9 @@ A pure Haskell implementation of [BIP0340][bp340] Schnorr signatures
 and deterministic [RFC6979][r6979] ECDSA (with [BIP0146][bp146]-style
 "low-S" signatures) on the elliptic curve secp256k1.
 
+(See also [ppad-csecp256k1][csecp] for FFI bindings to
+bitcoin-core/secp256k1.)
+
 ## Usage
 
 A sample GHCi session:
@@ -41,7 +44,7 @@ Haddocks (API documentation, etc.) are hosted at
 ## Performance
 
 The aim is best-in-class performance for pure, highly-auditable Haskell
-code.
+code, but we're not quite there yet.
 
 Current benchmark figures on my mid-2020 MacBook Air look like (use
 `cabal bench` to run the benchmark suite):
@@ -165,3 +168,4 @@ to get a REPL for the main library.
 [timea]: https://en.wikipedia.org/wiki/Timing_attack
 [flurl]: https://eprint.iacr.org/2014/140.pdf
 [const]: https://www.chosenplaintext.ca/articles/beginners-guide-constant-time-cryptography.html
+[csecp]: https://git.ppad.tech/csecp256k1
