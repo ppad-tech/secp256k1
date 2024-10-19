@@ -129,10 +129,10 @@ secret data:
   std dev              48.99 μs   (40.83 μs .. 62.77 μs)
 ```
 
-Be aware that integer division modulo the elliptic curve group order,
-when benchmarked on its own, does display persistent substantial timing
-differences on the order of 2 ns when the inputs are dramatically
-different in size:
+Integer division modulo the elliptic curve group order, when benchmarked
+on its own, does display persistent substantial timing differences on
+the order of 2 nanoseconds when the inputs are dramatically different in
+size:
 
 ```
   benchmarking remQ (remainder modulo _CURVE_Q)/remQ 2
@@ -148,11 +148,13 @@ different in size:
   std dev              882.9 ps   (647.8 ps .. 1.317 ns)
 ```
 
-Because we don't make "hard" guarantees of constant-time execution, take
-reasonable security precautions as appropriate. You shouldn't deploy the
-implementations within in any situation where they could easily be used
-as an oracle to construct a [timing attack][timea], and you shouldn't
-give sophisticated malicious actors [access to your computer][flurl].
+This is likely to be within acceptable limits for all but the most
+extreme security requirements, but because we don't make "hard"
+guarantees of constant-time execution, take reasonable security
+precautions as appropriate. You shouldn't deploy the implementations
+within in any situation where they could easily be used as an oracle to
+construct a [timing attack][timea], and you shouldn't give sophisticated
+malicious actors [access to your computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.

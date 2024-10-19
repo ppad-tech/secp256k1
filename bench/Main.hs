@@ -28,8 +28,8 @@ main = defaultMain [
 remQ :: Benchmark
 remQ = env setup $ \x ->
     bgroup "remQ (remainder modulo _CURVE_Q)" [
-      bench "remQ (2 ^ 255 - 19)" $ nf S.remQ x
-    , bench "remQ 2 " $ nf S.remQ 2
+      bench "remQ 2 " $ nf S.remQ 2
+    , bench "remQ (2 ^ 255 - 19)" $ nf S.remQ x
     ]
   where
     setup = pure . S.parse_int256 $ B16.decodeLenient
