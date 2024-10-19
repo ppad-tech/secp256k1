@@ -89,7 +89,7 @@ accurate and safe from attacks targeting e.g. faulty nonce generation or
 malicious inputs for signature parameters. Timing-sensitive operations,
 e.g. elliptic curve scalar multiplication, have been explicitly written
 so as to execute *algorithmically* in time constant with respect to
-secret data:
+secret data, and evidence from benchmarks supports this:
 
 ```
   benchmarking derive_public/sk = 2
@@ -129,10 +129,10 @@ secret data:
   std dev              48.99 μs   (40.83 μs .. 62.77 μs)
 ```
 
-Integer division modulo the elliptic curve group order, when benchmarked
-on its own, does display persistent substantial timing differences on
-the order of 2 nanoseconds when the inputs are dramatically different in
-size:
+Due to the use of arbitrary-precision integers, integer division modulo
+the elliptic curve group order does display persistent substantial
+timing differences on the order of 2 nanoseconds when the inputs differ
+dramatically in size (here 2 bits vs 255 bits):
 
 ```
   benchmarking remQ (remainder modulo _CURVE_Q)/remQ 2
@@ -148,13 +148,15 @@ size:
   std dev              882.9 ps   (647.8 ps .. 1.317 ns)
 ```
 
-This is likely to be within acceptable limits for all but the most
-extreme security requirements, but because we don't make "hard"
-guarantees of constant-time execution, take reasonable security
-precautions as appropriate. You shouldn't deploy the implementations
-within in any situation where they could easily be used as an oracle to
-construct a [timing attack][timea], and you shouldn't give sophisticated
-malicious actors [access to your computer][flurl].
+This represents the worst-case scenario (real-world private keys will
+never differ so extraordinarily) and is likely to be well within
+acceptable limits for all but the most extreme security requirements.
+But because we don't make "hard" guarantees of constant-time execution,
+take reasonable security precautions as appropriate. You shouldn't
+deploy the implementations within in any situation where they could
+easily be used as an oracle to construct a [timing attack][timea],
+and you shouldn't give sophisticated malicious actors [access to your
+computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
