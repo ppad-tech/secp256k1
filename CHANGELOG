@@ -1,5 +1,6 @@
-# Revision history for ppad-secp256k1
+# Changelog
 
-## 0.1.0 -- YYYY-mm-dd
+- 0.1.0 (2024-10-19)
+  * Initial release, supporting public key derivation and Schnorr &
+    ECDSA signatures on secp256k1.
 
-* First version. Released on an unsuspecting world.
