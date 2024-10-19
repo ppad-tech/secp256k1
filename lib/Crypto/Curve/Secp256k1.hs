@@ -156,7 +156,8 @@ roll32 bs = word256_to_integer $! (go 0 0 0 0 0) where
         in go acc0 acc1 acc2 ((acc3 `B.shiftL` 8) .|. b) (j + 1)
 {-# INLINE roll32 #-}
 
--- XX surely there's a better way to do this
+-- this "looks" inefficient due to the call to reverse, but it's
+-- actually really fast
 
 -- big-endian bytestring encoding
 unroll :: Integer -> BS.ByteString
@@ -177,7 +178,7 @@ unroll32 (unroll -> u)
     l = BS.length u
 
 -- replacing the following w/a series of functions with the hashed tags
--- hard-coded is possible
+-- hard-coded is possible, but there is virtually no performance benefit
 
 -- (bip0340) tagged hash function
 hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
@@ -293,7 +294,7 @@ _CURVE_G = Projective x y 1 where
   x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
   y = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
 
--- secp256k1 zero point
+-- secp256k1 zero point / point at infinity / monoidal identity
 _ZERO :: Projective
 _ZERO = Projective 0 1 0
 
@@ -339,8 +340,8 @@ ge n = 0 < n && n < _CURVE_Q
 -- Square root (Shanks-Tonelli) modulo secp256k1 field prime.
 --
 -- For a, return x such that a = x x mod _CURVE_P.
-modsqrt :: Integer -> Maybe Integer
-modsqrt n = runST $ do
+modsqrtP :: Integer -> Maybe Integer
+modsqrtP n = runST $ do
     r   <- newSTRef 1
     num <- newSTRef n
     e   <- newSTRef ((_CURVE_P + 1) `I.integerQuot` 4)
@@ -631,7 +632,7 @@ _parse_compressed h (roll32 -> x)
   | h /= 0x02 && h /= 0x03 = Nothing
   | not (fe x) = Nothing
   | otherwise = do
-      y <- modsqrt (weierstrass x)
+      y <- modsqrtP (weierstrass x)
       let yodd = I.integerTestBit y 0
           hodd = B.testBit h 0
       pure $!
@@ -810,7 +811,8 @@ sign_ecdsa = _sign_ecdsa LowS Hash
 --   signature's inherent malleability. If you need a conventional
 --   "low-s" signature, use 'sign_ecdsa'.
 --
---   >>> sign_ecdsa
+--   >>> sign_ecdsa_unrestricted sec msg
+--   "<ecdsa signature>"
 sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -852,10 +854,6 @@ _sign_ecdsa ty hf _SECRET m
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
-              -- note that modular division is not timing-safe when it
-              -- involves arbitrary-sized integers; benchmarks indicate about
-              -- a 2 ns difference in remQ execution time when input sizes
-              -- are extremely different
               Just kinv -> remQ (remQ (h_modQ + remQ (_SECRET * r)) * kinv)
         if   r == 0 -- negligible probability
         then sign_loop g
