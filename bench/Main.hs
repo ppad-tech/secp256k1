@@ -25,6 +25,16 @@ main = defaultMain [
   , ecdsa
   ]
 
+remQ :: Benchmark
+remQ = env setup $ \x ->
+    bgroup "remQ (remainder modulo _CURVE_Q)" [
+      bench "remQ (2 ^ 255 - 19)" $ nf S.remQ x
+    , bench "remQ 2 " $ nf S.remQ 2
+    ]
+  where
+    setup = pure . S.parse_int256 $ B16.decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+
 parse_point :: Benchmark
 parse_point = bgroup "parse_point" [
     bench "compressed" $ nf S.parse_point p_bs

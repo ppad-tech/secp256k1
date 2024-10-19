@@ -32,8 +32,11 @@ module Crypto.Curve.Secp256k1 (
   , verify_ecdsa
   , verify_ecdsa_unrestricted
 
+  -- * secp256k1 points
+  , Pub
+  , derive_pub
+
   -- * Parsing
-  , Word256(..)
   , parse_int256
   , parse_point
 
@@ -43,21 +46,22 @@ module Crypto.Curve.Secp256k1 (
   , double
   , mul
   , mul_unsafe
-  , derive_pub
 
   -- Coordinate systems and transformations
   , Affine(..)
   , Projective(..)
-  , Pub
   , affine
   , projective
   , valid
 
-  -- for testing
+  -- for testing/benchmarking
+  , Word256(..)
   , _sign_ecdsa_no_hash
   , _CURVE_P
   , _CURVE_Q
   , _CURVE_G
+  , remQ
+  , modQ
   ) where
 
 import Control.Monad (when)
@@ -592,14 +596,20 @@ derive_pub _SECRET
 
 -- parsing --------------------------------------------------------------------
 
+-- | Parse a positive 256-bit 'Integer', /e.g./ a Schnorr or ECDSA
+--   secret key.
+--
+--   >>> import qualified Data.ByteString as BS
+--   >>> parse_int256 (BS.replicate 32 0xFF)
+--   <2 ^ 256 - 1>
 parse_int256 :: BS.ByteString -> Integer
 parse_int256 bs
   | BS.length bs /= 32 =
       error "ppad-secp256k1 (parse_int256): requires exactly 32-byte input"
   | otherwise = roll32 bs
 
--- | Parse compressed point (33 bytes), uncompressed point (65 bytes),
---   or BIP0340-style point (32 bytes).
+-- | Parse compressed secp256k1 point (33 bytes), uncompressed point (65
+--   bytes), or BIP0340-style point (32 bytes).
 parse_point :: BS.ByteString -> Maybe Projective
 parse_point bs
     | len == 32 = _parse_bip0340 bs
@@ -842,7 +852,10 @@ _sign_ecdsa ty hf _SECRET m
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
-              -- XX timing concern
+              -- note that modular division is not timing-safe when it
+              -- involves arbitrary-sized integers; benchmarks indicate about
+              -- a 2 ns difference in remQ execution time when input sizes
+              -- are extremely different
               Just kinv -> remQ (remQ (h_modQ + remQ (_SECRET * r)) * kinv)
         if   r == 0 -- negligible probability
         then sign_loop g

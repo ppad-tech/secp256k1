@@ -28,10 +28,8 @@ A sample GHCi session:
   > Secp256k1.verify_schnorr msg pub sig0
   True
   >
-  > -- create a low-S ECDSA signature for the message
+  > -- create and verify a low-S ECDSA signature for the message
   > let sig1 = Secp256k1.sign_ecdsa sec msg
-  >
-  > -- verify it
   > Secp256k1.verify_ecdsa msg pub sig1
   > True
 ```
@@ -90,8 +88,8 @@ BIP0340 vectors][ut340], and ECDSA has been tested against the relevant
 accurate and safe from attacks targeting e.g. faulty nonce generation or
 malicious inputs for signature parameters. Timing-sensitive operations,
 e.g. elliptic curve scalar multiplication, have been explicitly written
-so as to execute algorithmically in time constant with respect to secret
-data:
+so as to execute *algorithmically* in time constant with respect to
+secret data:
 
 ```
   benchmarking derive_public/sk = 2
@@ -131,11 +129,30 @@ data:
   std dev              48.99 μs   (40.83 μs .. 62.77 μs)
 ```
 
-Despite all that, take reasonable security precautions as appropriate.
-You probably shouldn't deploy the implementations within in any
-situation where they could easily be used as an oracle to construct a
-[timing attack][timea], and you shouldn't give sophisticated malicious
-actors [access to your computer][flurl].
+Be aware that integer division modulo the elliptic curve group order,
+when benchmarked on its own, does display persistent substantial timing
+differences on the order of 2 ns when the inputs are dramatically
+different in size:
+
+```
+  benchmarking remQ (remainder modulo _CURVE_Q)/remQ 2
+  time                 27.44 ns   (27.19 ns .. 27.72 ns)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 27.23 ns   (27.03 ns .. 27.43 ns)
+  std dev              669.1 ps   (539.9 ps .. 860.2 ps)
+
+  benchmarking remQ (remainder modulo _CURVE_Q)/remQ (2 ^ 255 - 19)
+  time                 29.11 ns   (28.87 ns .. 29.33 ns)
+                       0.999 R²   (0.999 R² .. 1.000 R²)
+  mean                 29.04 ns   (28.82 ns .. 29.40 ns)
+  std dev              882.9 ps   (647.8 ps .. 1.317 ns)
+```
+
+Because we don't make "hard" guarantees of constant-time execution, take
+reasonable security precautions as appropriate. You shouldn't deploy the
+implementations within in any situation where they could easily be used
+as an oracle to construct a [timing attack][timea], and you shouldn't
+give sophisticated malicious actors [access to your computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
