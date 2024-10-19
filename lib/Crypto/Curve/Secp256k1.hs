@@ -20,8 +20,16 @@
 -- "low-S" signatures) on the elliptic curve secp256k1.
 
 module Crypto.Curve.Secp256k1 (
+  -- * secp256k1 points
+    Pub
+  , derive_pub
+
+  -- * Parsing
+  , parse_int256
+  , parse_point
+
   -- * BIP0340 Schnorr signatures
-    sign_schnorr
+  , sign_schnorr
   , verify_schnorr
 
   -- * RFC6979 ECDSA
@@ -31,14 +39,6 @@ module Crypto.Curve.Secp256k1 (
   , sign_ecdsa_unrestricted
   , verify_ecdsa
   , verify_ecdsa_unrestricted
-
-  -- * secp256k1 points
-  , Pub
-  , derive_pub
-
-  -- * Parsing
-  , parse_int256
-  , parse_point
 
   -- Elliptic curve group operations
   , neg
@@ -602,7 +602,7 @@ derive_pub _SECRET
 --
 --   >>> import qualified Data.ByteString as BS
 --   >>> parse_int256 (BS.replicate 32 0xFF)
---   <2 ^ 256 - 1>
+--   <2^256 - 1>
 parse_int256 :: BS.ByteString -> Integer
 parse_int256 bs
   | BS.length bs /= 32 =
@@ -611,6 +611,15 @@ parse_int256 bs
 
 -- | Parse compressed secp256k1 point (33 bytes), uncompressed point (65
 --   bytes), or BIP0340-style point (32 bytes).
+--
+--   >>> parse_point <33-byte compressed point>
+--   Just <Pub>
+--   >>> parse_point <65-byte uncompressed point>
+--   Just <Pub>
+--   >>> parse_point <32-byte bip0340 public key>
+--   Just <Pub>
+--   >>> parse_point <anything else>
+--   Nothing
 parse_point :: BS.ByteString -> Maybe Projective
 parse_point bs
     | len == 32 = _parse_bip0340 bs
