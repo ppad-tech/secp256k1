@@ -36,7 +36,7 @@ A sample GHCi session:
   > -- create and verify a low-S ECDSA signature for the message
   > let sig1 = Secp256k1.sign_ecdsa sec msg
   > Secp256k1.verify_ecdsa msg pub sig1
-  > True
+  True
 ```
 
 ## Documentation
