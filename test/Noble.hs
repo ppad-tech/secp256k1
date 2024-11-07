@@ -100,9 +100,9 @@ instance A.FromJSON ValidTest where
     <*> fmap toBS (m .: "signature")
 
 parse_compact :: BS.ByteString -> ECDSA
-parse_compact bs =
-  let (roll -> r, roll -> s) = BS.splitAt 32 bs
-  in  ECDSA r s
+parse_compact bs = case parse_sig bs of
+  Nothing -> error "bang"
+  Just s -> s
 
 data InvalidTest = InvalidTest {
     iv_sign   :: ![(Int, InvalidSignTest)]

@@ -27,6 +27,7 @@ module Crypto.Curve.Secp256k1 (
   -- * Parsing
   , parse_int256
   , parse_point
+  , parse_sig
 
   -- * BIP0340 Schnorr signatures
   , sign_schnorr
@@ -342,26 +343,26 @@ ge n = 0 < n && n < _CURVE_Q
 -- For a, return x such that a = x x mod _CURVE_P.
 modsqrtP :: Integer -> Maybe Integer
 modsqrtP n = runST $ do
-    r   <- newSTRef 1
-    num <- newSTRef n
-    e   <- newSTRef ((_CURVE_P + 1) `I.integerQuot` 4)
+  r   <- newSTRef 1
+  num <- newSTRef n
+  e   <- newSTRef ((_CURVE_P + 1) `I.integerQuot` 4)
 
-    let loop = do
-          ev <- readSTRef e
-          when (ev > 0) $ do
-            when (I.integerTestBit ev 0) $ do
-              numv <- readSTRef num
-              modifySTRef' r (\rv -> (rv * numv) `I.integerRem` _CURVE_P)
-            modifySTRef' num (\numv -> (numv * numv) `I.integerRem` _CURVE_P)
-            modifySTRef' e (`I.integerShiftR` 1)
-            loop
+  let loop = do
+        ev <- readSTRef e
+        when (ev > 0) $ do
+          when (I.integerTestBit ev 0) $ do
+            numv <- readSTRef num
+            modifySTRef' r (\rv -> (rv * numv) `I.integerRem` _CURVE_P)
+          modifySTRef' num (\numv -> (numv * numv) `I.integerRem` _CURVE_P)
+          modifySTRef' e (`I.integerShiftR` 1)
+          loop
 
-    loop
-    rv  <- readSTRef r
-    pure $
-      if   remP (rv * rv) == n
-      then Just $! rv
-      else Nothing
+  loop
+  rv  <- readSTRef r
+  pure $
+    if   remP (rv * rv) == n
+    then Just $! rv
+    else Nothing
 
 -- ec point operations --------------------------------------------------------
 
@@ -658,6 +659,17 @@ _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
       in  if   valid p
           then Just $! p
           else Nothing
+
+-- | Parse an ECDSA signature encoded in 64-byte "compact" form.
+--
+--   >>> parse_sig <64-byte compact signature>
+--   "<ecdsa signature>"
+parse_sig :: BS.ByteString -> Maybe ECDSA
+parse_sig bs
+  | BS.length bs /= 64 = Nothing
+  | otherwise = pure $
+      let (roll -> r, roll -> s) = BS.splitAt 32 bs
+      in  ECDSA r s
 
 -- schnorr --------------------------------------------------------------------
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
