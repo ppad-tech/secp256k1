@@ -71,7 +71,7 @@ Current benchmark figures on my mid-2020 MacBook Air look like (use
   mean                 1.666 ms   (1.634 ms .. 1.700 ms)
   std dev              114.0 μs   (97.55 μs .. 139.6 μs)
 
-  benchmarking ecdsa/sign_ecdsa' (large)
+  benchmarking ecdsa/sign_ecdsa'
   time                 273.9 μs   (266.3 μs .. 284.2 μs)
                        0.991 R²   (0.985 R² .. 0.996 R²)
   mean                 278.9 μs   (272.6 μs .. 286.5 μs)
