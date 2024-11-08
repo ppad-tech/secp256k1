@@ -1,5 +1,23 @@
 # Changelog
 
+- 0.2.0 (2024-11-08)
+  * Adds wNAF ("w-ary non-adjacent form") scalar multiplication, as
+    well as fast 'sign' and 'verify' variants for Schnorr and ECDSA
+    (disambiguated by a trailing apostrophe) that make use of it.
+
+    Each wNAF-powered function requires a 'Context' consisting of
+    precomputed secp256k1 generator multiples; one can be gotten via
+    'precompute'.
+
+    Note that the non-wNAF-powered sign and verify functions have
+    incurred a slight performance decrease (on the order of tens to
+    hundreds of microseconds) as a result.
+
+  * Adds 'parse_sig' for parsing compact signatures.
+
+  * Adds a dependency on the 'primitive' library (already transitively required
+    via 'ppad-hmac-drbg').
+
 - 0.1.0 (2024-10-19)
   * Initial release, supporting public key derivation and Schnorr &
     ECDSA signatures on secp256k1.
