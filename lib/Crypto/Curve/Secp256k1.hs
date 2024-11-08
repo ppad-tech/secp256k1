@@ -604,6 +604,13 @@ instance Show Context where
 
 -- | Create a secp256k1 context by precomputing multiples of the curve's
 --   generator point.
+--
+--   This should be used once to create a 'Context' to be reused
+--   repeatedly afterwards.
+--
+--   >>> let !tex = precompute
+--   >>> sign_ecdsa' tex sec msg
+--   >>> sign_schnorr' tex sec msg aux
 precompute :: Context
 precompute = _precompute 8
 

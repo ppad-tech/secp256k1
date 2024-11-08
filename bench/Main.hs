@@ -21,6 +21,7 @@ main = defaultMain [
     parse_point
   , add
   , mul
+  , precompute
   , mul_wnaf
   , derive_pub
   , schnorr
@@ -74,6 +75,9 @@ mul = env setup $ \x ->
   where
     setup = pure . S.parse_int256 $ B16.decodeLenient
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+
+precompute :: Benchmark
+precompute = bench "precompute" $ nfIO (pure S.precompute)
 
 mul_wnaf :: Benchmark
 mul_wnaf = env setup $ \ ~(tex, x) ->
