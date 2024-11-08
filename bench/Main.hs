@@ -13,6 +13,7 @@ import qualified Crypto.Curve.Secp256k1 as S
 instance NFData S.Projective
 instance NFData S.Affine
 instance NFData S.ECDSA
+instance NFData S.Context
 instance NFData S.Word256
 
 main :: IO ()
@@ -20,6 +21,7 @@ main = defaultMain [
     parse_point
   , add
   , mul
+  , mul_wnaf
   , derive_pub
   , schnorr
   , ecdsa
@@ -72,6 +74,19 @@ mul = env setup $ \x ->
   where
     setup = pure . S.parse_int256 $ B16.decodeLenient
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+
+mul_wnaf :: Benchmark
+mul_wnaf = env setup $ \ ~(tex, x) ->
+    bgroup "mul_wnaf" [
+      bench "2 G" $ nf (S.mul_wnaf tex) 2
+    , bench "(2 ^ 255 - 19) G" $ nf (S.mul_wnaf tex) x
+    ]
+  where
+    setup = do
+      let !tex = S.precompute
+          !int = S.parse_int256 $ B16.decodeLenient
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+      pure (tex, int)
 
 derive_pub :: Benchmark
 derive_pub = env setup $ \x ->
