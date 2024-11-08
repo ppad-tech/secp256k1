@@ -4,6 +4,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -48,6 +49,10 @@ module Crypto.Curve.Secp256k1 (
   , mul
   , mul_unsafe
 
+  , Context(..)
+  , precompute
+  , mul_wnaf
+
   -- Coordinate systems and transformations
   , Affine(..)
   , Projective(..)
@@ -73,6 +78,7 @@ import Data.Bits ((.|.))
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BU
+import qualified Data.Primitive.Array as A
 import Data.STRef
 import Data.Word (Word8, Word64)
 import GHC.Generics
@@ -580,6 +586,79 @@ mul_unsafe p n
               nm = I.integerShiftR m 1
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
+
+-- | Precomputed multiples of the secp256k1 base or generator point.
+data Context = Context {
+    ctxW     :: {-# UNPACK #-} !Int
+  , ctxArray :: !(A.Array Projective)
+  } deriving (Eq, Generic)
+
+instance Show Context where
+  show Context {} = "<secp256k1 context>"
+
+-- | Create a secp256k1 context by precomputing multiples of the curve's
+--   generator point.
+precompute :: Context
+precompute = _precompute 8
+
+-- dumb strict pair
+data Pair a b = Pair !a !b
+
+-- translation of noble-secp256k1's 'precompute'
+_precompute :: Int -> Context
+_precompute ctxW = Context {..} where
+  ctxArray = A.arrayFromListN size (loop_w mempty _CURVE_G 0)
+  capJ = (2 :: Int) ^ (ctxW - 1)
+  ws = 256 `quot` ctxW + 1
+  size = ws * capJ
+
+  loop_w !acc !p !w
+    | w == ws = reverse acc
+    | otherwise =
+        let b = p
+            !(Pair nacc nb) = loop_j p (b : acc) b 1
+            np = double nb
+        in  loop_w nacc np (succ w)
+
+  loop_j !p !acc !b !j
+    | j == capJ = Pair acc b
+    | otherwise =
+        let nb = add b p
+        in  loop_j p (nb : acc) nb (succ j)
+
+-- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
+-- secp256k1 points.
+mul_wnaf :: Context -> Integer -> Projective
+mul_wnaf (Context capW tex) _SECRET =
+    loop 0 _ZERO _CURVE_G _SECRET
+  where
+    wins = 256 `quot` capW + 1
+    wsize = 2 ^ (capW - 1)
+    mask = 2 ^ capW - 1
+    mnum = 2 ^ capW
+
+    loop !w !acc !f !n
+      | w == wins = acc
+      | otherwise =
+          let off0 = w * fi wsize
+
+              b0 = n `I.integerAnd` mask
+              n0 = n `I.integerShiftR` fi capW
+
+              (b1, n1) | b0 > wsize = (b0 - mnum, n0 + 1)
+                       | otherwise  = (b0, n0)
+
+              off1 = off0 + fi (abs b1) - 1
+
+          in  if   b1 == 0
+              then let !pr = A.indexArray tex off0
+                       !pt | w `quot` 2 /= 0 = neg pr
+                           | otherwise = pr
+                   in  loop (w + 1) acc (add f pt) n1
+              else let !pr = A.indexArray tex off1
+                       !pt | b1 < 0 = neg pr
+                           | otherwise = pr
+                   in  loop (w + 1) (add acc pt) f n1
 
 -- | Derive a public key (i.e., a secp256k1 point) from the provided
 --   secret.
