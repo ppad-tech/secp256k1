@@ -656,8 +656,6 @@ mul_wnaf Context {..} _SECRET =
       | otherwise =
           let !off0 = w * fi wsize
 
-              -- XX check timing safety
-
               !b0 = n `I.integerAnd` mask
               !n0 = n `I.integerShiftR` fi ctxW
 
@@ -1057,7 +1055,7 @@ _sign_ecdsa _mul ty hf _SECRET m
   | not (ge _SECRET) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
   | otherwise  = runST $ do
       -- RFC6979 sec 3.3a
-      let entropy = int2octets _SECRET -- XX timing concern
+      let entropy = int2octets _SECRET
           nonce   = bits2octets h
       drbg <- DRBG.new SHA256.hmac entropy nonce mempty
       -- RFC6979 sec 2.4
