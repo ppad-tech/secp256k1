@@ -12,8 +12,9 @@ bitcoin-core/secp256k1.)
 A sample GHCi session:
 
 ```
+  > -- pragmas and b16 import for illustration only; not required
   > :set -XOverloadedStrings
-  > -- b16 import not actually required for use; just for illustration here
+  > :set -XBangPatterns
   > import qualified Data.ByteString.Base16 as B16
   >
   > -- import qualified
@@ -37,6 +38,11 @@ A sample GHCi session:
   > let sig1 = Secp256k1.sign_ecdsa sec msg
   > Secp256k1.verify_ecdsa msg pub sig1
   True
+  >
+  > -- for faster signs (especially w/ECDSA) and verifies, use a context
+  > let !tex = Secp256k1.precompute
+  > Secp256k1.verify_schnorr' tex msg pub sig0
+  True
 ```
 
 ## Documentation
@@ -47,38 +53,35 @@ Haddocks (API documentation, etc.) are hosted at
 ## Performance
 
 The aim is best-in-class performance for pure, highly-auditable Haskell
-code, but we're not quite there yet.
+code.
 
 Current benchmark figures on my mid-2020 MacBook Air look like (use
 `cabal bench` to run the benchmark suite):
 
 ```
-  benchmarking schnorr/sign_schnorr
-  time                 5.663 ms   (5.618 ms .. 5.714 ms)
-                       0.999 R²   (0.999 R² .. 1.000 R²)
-  mean                 5.683 ms   (5.652 ms .. 5.715 ms)
-  std dev              98.56 μs   (78.45 μs .. 127.0 μs)
+  benchmarking schnorr/sign_schnorr'
+  time                 3.109 ms   (3.030 ms .. 3.199 ms)
+                       0.994 R²   (0.992 R² .. 0.997 R²)
+  mean                 3.137 ms   (3.074 ms .. 3.226 ms)
+  std dev              233.7 μs   (168.9 μs .. 350.1 μs)
 
-  benchmarking schnorr/verify_schnorr
-  time                 2.323 ms   (2.301 ms .. 2.360 ms)
-                       0.999 R²   (0.997 R² .. 0.999 R²)
-  mean                 2.342 ms   (2.328 ms .. 2.363 ms)
-  std dev              57.68 μs   (43.66 μs .. 86.22 μs)
-  variance introduced by outliers: 11% (moderately inflated)
+  benchmarking schnorr/verify_schnorr'
+  time                 1.659 ms   (1.585 ms .. 1.730 ms)
+                       0.990 R²   (0.985 R² .. 0.994 R²)
+  mean                 1.666 ms   (1.634 ms .. 1.700 ms)
+  std dev              114.0 μs   (97.55 μs .. 139.6 μs)
 
-  benchmarking ecdsa/sign_ecdsa
-  time                 1.756 ms   (1.741 ms .. 1.774 ms)
-                       0.999 R²   (0.998 R² .. 1.000 R²)
-  mean                 1.773 ms   (1.760 ms .. 1.788 ms)
-  std dev              45.40 μs   (35.58 μs .. 57.52 μs)
-  variance introduced by outliers: 13% (moderately inflated)
+  benchmarking ecdsa/sign_ecdsa' (large)
+  time                 273.9 μs   (266.3 μs .. 284.2 μs)
+                       0.991 R²   (0.985 R² .. 0.996 R²)
+  mean                 278.9 μs   (272.6 μs .. 286.5 μs)
+  std dev              23.33 μs   (18.96 μs .. 30.19 μs)
 
-  benchmarking ecdsa/verify_ecdsa
-  time                 2.300 ms   (2.270 ms .. 2.331 ms)
-                       0.998 R²   (0.997 R² .. 0.999 R²)
-  mean                 2.318 ms   (2.297 ms .. 2.345 ms)
-  std dev              81.45 μs   (65.15 μs .. 105.2 μs)
-  variance introduced by outliers: 21% (moderately inflated)
+  benchmarking ecdsa/verify_ecdsa'
+  time                 1.579 ms   (1.534 ms .. 1.631 ms)
+                       0.958 R²   (0.887 R² .. 0.993 R²)
+  mean                 1.744 ms   (1.670 ms .. 1.991 ms)
+  std dev              375.2 μs   (173.8 μs .. 770.9 μs)
 ```
 
 ## Security
