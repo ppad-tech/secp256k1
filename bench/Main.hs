@@ -99,31 +99,41 @@ derive_pub = env setup $ \x ->
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 schnorr :: Benchmark
-schnorr = env setup $ \big ->
+schnorr = env setup $ \ ~(tex, big) ->
     bgroup "schnorr" [
-      bench "sign_schnorr (small secret)" $ nf (S.sign_schnorr 2 s_msg) s_aux
-    , bench "sign_schnorr (large secret)" $ nf (S.sign_schnorr big s_msg) s_aux
+      bench "sign_schnorr (small)" $ nf (S.sign_schnorr 2 s_msg) s_aux
+    , bench "sign_schnorr (large)" $ nf (S.sign_schnorr big s_msg) s_aux
+    , bench "sign_schnorr' (small)" $ nf (S.sign_schnorr' tex 2 s_msg) s_aux
+    , bench "sign_schnorr' (large)" $ nf (S.sign_schnorr' tex big s_msg) s_aux
     , bench "verify_schnorr" $ nf (S.verify_schnorr s_msg s_pk) s_sig
-    ]
-  where
-    setup = pure . S.parse_int256 $ B16.decodeLenient
-      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
-
-ecdsa :: Benchmark
-ecdsa = env setup $ \ ~(big, pub, msg, sig) ->
-    bgroup "ecdsa" [
-      bench "sign_ecdsa (small)" $ nf (S.sign_ecdsa 2) s_msg
-    , bench "sign_ecdsa (large)" $ nf (S.sign_ecdsa big) s_msg
-    , bench "verify_ecdsa" $ nf (S.verify_ecdsa msg pub) sig
+    , bench "verify_schnorr'" $ nf (S.verify_schnorr' tex s_msg s_pk) s_sig
     ]
   where
     setup = do
-      let big = S.parse_int256 $ B16.decodeLenient
+      let !tex = S.precompute
+          !int = S.parse_int256 $ B16.decodeLenient
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+      pure (tex, int)
+
+ecdsa :: Benchmark
+ecdsa = env setup $ \ ~(tex, big, pub, msg, sig) ->
+    bgroup "ecdsa" [
+      bench "sign_ecdsa (small)" $ nf (S.sign_ecdsa 2) s_msg
+    , bench "sign_ecdsa (large)" $ nf (S.sign_ecdsa big) s_msg
+    , bench "sign_ecdsa' (small)" $ nf (S.sign_ecdsa' tex 2) s_msg
+    , bench "sign_ecdsa' (large)" $ nf (S.sign_ecdsa' tex big) s_msg
+    , bench "verify_ecdsa" $ nf (S.verify_ecdsa msg pub) sig
+    , bench "verify_ecdsa'" $ nf (S.verify_ecdsa' tex msg pub) sig
+    ]
+  where
+    setup = do
+      let !tex = S.precompute
+          big = S.parse_int256 $ B16.decodeLenient
             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
           pub = S.derive_pub big
           msg = "i approve of this message"
           sig = S.sign_ecdsa big s_msg
-      pure (big, pub, msg, sig)
+      pure (tex, big, pub, msg, sig)
 
 p_bs :: BS.ByteString
 p_bs = B16.decodeLenient

@@ -32,15 +32,21 @@ module Crypto.Curve.Secp256k1 (
 
   -- * BIP0340 Schnorr signatures
   , sign_schnorr
+  , sign_schnorr'
   , verify_schnorr
+  , verify_schnorr'
 
   -- * RFC6979 ECDSA
   , ECDSA(..)
   , SigType(..)
   , sign_ecdsa
+  , sign_ecdsa'
   , sign_ecdsa_unrestricted
+  , sign_ecdsa_unrestricted'
   , verify_ecdsa
+  , verify_ecdsa'
   , verify_ecdsa_unrestricted
+  , verify_ecdsa_unrestricted'
 
   -- Elliptic curve group operations
   , neg
@@ -642,6 +648,8 @@ mul_wnaf (Context capW tex) _SECRET =
       | otherwise =
           let off0 = w * fi wsize
 
+              -- XX check timing safety
+
               b0 = n `I.integerAnd` mask
               n0 = n `I.integerShiftR` fi capW
 
@@ -652,7 +660,7 @@ mul_wnaf (Context capW tex) _SECRET =
 
           in  if   b1 == 0
               then let !pr = A.indexArray tex off0
-                       !pt | w `quot` 2 /= 0 = neg pr
+                       !pt | w `quot` 2 /= 0 = neg pr -- XX integerTestBit w 0
                            | otherwise = pr
                    in  loop (w + 1) acc (add f pt) n1
               else let !pr = A.indexArray tex off1
@@ -773,10 +781,37 @@ sign_schnorr
   -> BS.ByteString  -- ^ message
   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
   -> BS.ByteString  -- ^ 64-byte Schnorr signature
-sign_schnorr _SECRET m a
+sign_schnorr = _sign_schnorr (mul _CURVE_G)
+
+-- | The same as 'sign_schnorr', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to 'sign_schnorr'.
+--
+--   >>> import qualified System.Entropy as E
+--   >>> aux <- E.getEntropy 32
+--   >>> let !tex = precompute
+--   >>> sign_schnorr' tex sec msg aux
+--   "<64-byte schnorr signature>"
+sign_schnorr'
+  :: Context        -- ^ secp256k1 context
+  -> Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
+  -> BS.ByteString  -- ^ 64-byte Schnorr signature
+sign_schnorr' tex = _sign_schnorr (mul_wnaf tex)
+
+_sign_schnorr
+  :: (Integer -> Projective)  -- partially-applied multiplication function
+  -> Integer                  -- secret key
+  -> BS.ByteString            -- message
+  -> BS.ByteString            -- 32 bytes of auxilliary random data
+  -> BS.ByteString
+_sign_schnorr _mul _SECRET m a
   | not (ge _SECRET) = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
   | otherwise  =
-      let p_proj = mul _CURVE_G _SECRET
+      let p_proj = _mul _SECRET
           Affine x_p y_p = affine p_proj
           d | I.integerTestBit y_p 0 = _CURVE_Q - _SECRET
             | otherwise = _SECRET
@@ -793,7 +828,7 @@ sign_schnorr _SECRET m a
       in  if   k' == 0 -- negligible probability
           then error "ppad-secp256k1 (sign_schnorr): invalid k"
           else
-            let Affine x_r y_r = affine (mul _CURVE_G k')
+            let Affine x_r y_r = affine (_mul k')
                 k | I.integerTestBit y_r 0 = _CURVE_Q - k'
                   | otherwise = k'
 
@@ -821,7 +856,34 @@ verify_schnorr
   -> Pub            -- ^ public key
   -> BS.ByteString  -- ^ 64-byte Schnorr signature
   -> Bool
-verify_schnorr m (affine -> Affine x_p _) sig
+verify_schnorr = _verify_schnorr (mul_unsafe _CURVE_G)
+
+-- | The same as 'verify_schnorr', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   You can expect about a 1.5x performance increase when using this
+--   function, compared to 'verify_schnorr'.
+--
+--   >>> let !tex = precompute
+--   >>> verify_schnorr' tex msg pub <valid signature>
+--   True
+--   >>> verify_schnorr' tex msg pub <invalid signature>
+--   False
+verify_schnorr'
+  :: Context        -- ^ secp256k1 context
+  -> BS.ByteString  -- ^ message
+  -> Pub            -- ^ public key
+  -> BS.ByteString  -- ^ 64-byte Schnorr signature
+  -> Bool
+verify_schnorr' tex = _verify_schnorr (mul_wnaf tex)
+
+_verify_schnorr
+  :: (Integer -> Projective) -- partially-applied multiplication function
+  -> BS.ByteString
+  -> Pub
+  -> BS.ByteString
+  -> Bool
+_verify_schnorr _mul m (affine -> Affine x_p _) sig
   | BS.length sig /= 64 = False
   | otherwise = case lift x_p of
       Nothing -> False
@@ -831,7 +893,7 @@ verify_schnorr m (affine -> Affine x_p _) sig
             then False
             else let e = modQ . roll32 $ hash_tagged "BIP0340/challenge"
                            (unroll32 r <> unroll32 x_P <> m)
-                     dif = add (mul_unsafe _CURVE_G s)
+                     dif = add (_mul s)
                                (neg (mul_unsafe (projective capP) e))
                  in  if   dif == _ZERO
                      then False
@@ -901,7 +963,23 @@ sign_ecdsa
   :: Integer         -- ^ secret key
   -> BS.ByteString   -- ^ message
   -> ECDSA
-sign_ecdsa = _sign_ecdsa LowS Hash
+sign_ecdsa = _sign_ecdsa (mul _CURVE_G) LowS Hash
+
+-- | The same as 'sign_ecdsa', except uses a 'Context' to optimise internal
+--   calculations.
+--
+--   You can expect about a 10x performance increase when using this
+--   function, compared to 'sign_ecdsa'.
+--
+--   >>> let !tex = precompute
+--   >>> sign_ecdsa' tex sec msg
+--   "<ecdsa signature>"
+sign_ecdsa'
+  :: Context         -- ^ secp256k1 context
+  -> Integer         -- ^ secret key
+  -> BS.ByteString   -- ^ message
+  -> ECDSA
+sign_ecdsa' tex = _sign_ecdsa (mul_wnaf tex) LowS Hash
 
 -- | Produce an ECDSA signature for the provided message, using the
 --   provided private key.
@@ -917,7 +995,23 @@ sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
   -> ECDSA
-sign_ecdsa_unrestricted = _sign_ecdsa Unrestricted Hash
+sign_ecdsa_unrestricted = _sign_ecdsa (mul _CURVE_G) Unrestricted Hash
+
+-- | The same as 'sign_ecdsa_unrestricted', except uses a 'Context' to
+--   optimise internal calculations.
+--
+--   You can expect about a 10x performance increase when using this
+--   function, compared to 'sign_ecdsa_unrestricted'.
+--
+--   >>> let !tex = precompute
+--   >>> sign_ecdsa_unrestricted' tex sec msg
+--   "<ecdsa signature>"
+sign_ecdsa_unrestricted'
+  :: Context        -- ^ secp256k1 context
+  -> Integer        -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> ECDSA
+sign_ecdsa_unrestricted' tex = _sign_ecdsa (mul_wnaf tex) Unrestricted Hash
 
 -- Produce a "low-s" ECDSA signature for the provided message, using
 -- the provided private key. Assumes that the message has already been
@@ -929,10 +1023,16 @@ _sign_ecdsa_no_hash
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message digest
   -> ECDSA
-_sign_ecdsa_no_hash = _sign_ecdsa LowS NoHash
+_sign_ecdsa_no_hash = _sign_ecdsa (mul _CURVE_G) LowS NoHash
 
-_sign_ecdsa :: SigType -> HashFlag -> Integer -> BS.ByteString -> ECDSA
-_sign_ecdsa ty hf _SECRET m
+_sign_ecdsa
+  :: (Integer -> Projective) -- partially-applied multiplication function
+  -> SigType
+  -> HashFlag
+  -> Integer
+  -> BS.ByteString
+  -> ECDSA
+_sign_ecdsa _mul ty hf _SECRET m
   | not (ge _SECRET) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
   | otherwise  = runST $ do
       -- RFC6979 sec 3.3a
@@ -950,7 +1050,7 @@ _sign_ecdsa ty hf _SECRET m
 
       sign_loop g = do
         k <- gen_k g
-        let kg = mul _CURVE_G k
+        let kg = _mul k
             Affine (modQ -> r) _ = affine kg
             s = case modinv k (fi _CURVE_Q) of
               Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
@@ -1000,6 +1100,27 @@ verify_ecdsa m p sig@(ECDSA _ s)
   | s > B.unsafeShiftR _CURVE_Q 1 = False
   | otherwise = verify_ecdsa_unrestricted m p sig
 
+-- | The same as 'verify_ecdsa', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to 'verify_ecdsa'.
+--
+--   let !tex = precompute
+--   >>> verify_ecdsa' tex msg pub valid_sig
+--   True
+--   >>> verify_ecdsa' tex msg pub invalid_sig
+--   False
+verify_ecdsa'
+  :: Context       -- ^ secp256k1 context
+  -> BS.ByteString -- ^ message
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify_ecdsa' tex m p sig@(ECDSA _ s)
+  | s > B.unsafeShiftR _CURVE_Q 1 = False
+  | otherwise = verify_ecdsa_unrestricted' tex m p sig
+
 -- | Verify an unrestricted ECDSA signature for the provided message and
 --   public key.
 --
@@ -1012,7 +1133,34 @@ verify_ecdsa_unrestricted
   -> Pub           -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
-verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
+verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_unsafe _CURVE_G)
+
+-- | The same as 'verify_ecdsa_unrestricted', except uses a 'Context' to
+--   optimise internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to 'verify_ecdsa_unrestricted'.
+--
+--   let !tex = precompute
+--   >>> verify_ecdsa_unrestricted' tex msg pub valid_sig
+--   True
+--   >>> verify_ecdsa_unrestricted' tex msg pub invalid_sig
+--   False
+verify_ecdsa_unrestricted'
+  :: Context       -- ^ secp256k1 context
+  -> BS.ByteString -- ^ message
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify_ecdsa_unrestricted' tex = _verify_ecdsa_unrestricted (mul_wnaf tex)
+
+_verify_ecdsa_unrestricted
+  :: (Integer -> Projective) -- partially-applied multiplication function
+  -> BS.ByteString
+  -> Pub
+  -> ECDSA
+  -> Bool
+_verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
   -- SEC1-v2 4.1.4
   | not (ge r) || not (ge s) = False
   | otherwise =
@@ -1024,7 +1172,7 @@ verify_ecdsa_unrestricted (SHA256.hash -> h) p (ECDSA r s)
             Just si -> si
           u1   = remQ (e * s_inv)
           u2   = remQ (r * s_inv)
-          capR = add (mul_unsafe _CURVE_G u1) (mul_unsafe p u2)
+          capR = add (_mul u1) (mul_unsafe p u2)
       in  if   capR == _ZERO
           then False
           else let Affine (modQ -> v) _ = affine capR
