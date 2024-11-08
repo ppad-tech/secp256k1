@@ -37,26 +37,38 @@ data Case = Case {
   , c_comment :: !BS.ByteString
   } deriving Show
 
-execute :: Case -> TestTree
-execute Case {..} = testCase ("bip0340 " <> show c_index) $
+execute :: Context -> Case -> TestTree
+execute tex Case {..} = testCase ("bip0340 " <> show c_index) $
   case parse_point (B16.decodeLenient c_pk) of
     Nothing -> assertBool mempty (not c_res)
     Just pk -> do
       if   c_sk == mempty
       then do -- no signature; test verification
-        let ver = verify_schnorr c_msg pk c_sig
+        let ver  = verify_schnorr c_msg pk c_sig
+            ver' = verify_schnorr' tex c_msg pk c_sig
         if   c_res
-        then assertBool mempty ver
-        else assertBool mempty (not ver)
+        then do
+          assertBool mempty ver
+          assertBool mempty ver'
+        else do
+          assertBool mempty (not ver)
+          assertBool mempty (not ver')
       -- XX test pubkey derivation from sk
       else do -- signature present; test sig too
         let sk = roll c_sk
-            sig = sign_schnorr sk c_msg c_aux
-            ver = verify_schnorr c_msg pk sig
+            sig  = sign_schnorr sk c_msg c_aux
+            sig' = sign_schnorr' tex sk c_msg c_aux
+            ver  = verify_schnorr c_msg pk sig
+            ver' = verify_schnorr' tex c_msg pk sig
         assertEqual mempty c_sig sig
+        assertEqual mempty c_sig sig'
         if   c_res
-        then assertBool mempty ver
-        else assertBool mempty (not ver)
+        then do
+          assertBool mempty ver
+          assertBool mempty ver'
+        else do
+          assertBool mempty (not ver)
+          assertBool mempty (not ver')
 
 header :: AT.Parser ()
 header = do

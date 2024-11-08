@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -24,46 +25,51 @@ data Ecdsa = Ecdsa {
   , ec_invalid :: !InvalidTest
   } deriving Show
 
-execute_ecdsa :: Ecdsa -> TestTree
-execute_ecdsa Ecdsa {..} = testGroup "noble_ecdsa" [
-      testGroup "valid" (fmap execute_valid ec_valid)
-    , testGroup "invalid (sign)" (fmap execute_invalid_sign iv_sign)
-    , testGroup "invalid (verify)" (fmap execute_invalid_verify iv_verify)
+execute_ecdsa :: Context -> Ecdsa -> TestTree
+execute_ecdsa tex Ecdsa {..} = testGroup "noble_ecdsa" [
+      testGroup "valid" (fmap (execute_valid tex) ec_valid)
+    , testGroup "invalid (sign)" (fmap (execute_invalid_sign tex) iv_sign)
+    , testGroup "invalid (verify)" (fmap (execute_invalid_verify tex) iv_verify)
     ]
   where
     InvalidTest {..} = ec_invalid
 
-execute_valid :: (Int, ValidTest) -> TestTree
-execute_valid (label, ValidTest {..}) =
+execute_valid :: Context -> (Int, ValidTest) -> TestTree
+execute_valid tex (label, ValidTest {..}) =
   testCase ("noble-secp256k1, valid (" <> show label <> ")") $ do
     let msg = vt_m
         x   = vt_d
         pec = parse_compact vt_signature
         sig = _sign_ecdsa_no_hash x msg
+        sig' = _sign_ecdsa_no_hash' tex x msg
+    assertEqual mempty sig sig'
     assertEqual mempty pec sig
 
-execute_invalid_sign :: (Int, InvalidSignTest) -> TestTree
-execute_invalid_sign (label, InvalidSignTest {..}) =
+execute_invalid_sign :: Context -> (Int, InvalidSignTest) -> TestTree
+execute_invalid_sign tex (label, InvalidSignTest {..}) =
     testCase ("noble-secp256k1, invalid sign (" <> show label <> ")") $ do
       let x   = ivs_d
           m   = ivs_m
       err <- catch (pure (_sign_ecdsa_no_hash x m) >> pure False) handler
-      if   err
+      err' <- catch (pure (_sign_ecdsa_no_hash' tex x m) >> pure False) handler
+      if   err || err'
       then assertFailure "expected error not caught"
       else pure ()
   where
     handler :: ErrorCall -> IO Bool
     handler _ = pure True
 
-execute_invalid_verify :: (Int, InvalidVerifyTest) -> TestTree
-execute_invalid_verify (label, InvalidVerifyTest {..}) =
+execute_invalid_verify :: Context -> (Int, InvalidVerifyTest) -> TestTree
+execute_invalid_verify tex (label, InvalidVerifyTest {..}) =
   testCase ("noble-secp256k1, invalid verify (" <> show label <> ")") $
     case parse_point (B16.decodeLenient ivv_Q) of
       Nothing -> assertBool "no parse" True
       Just pub -> do
         let sig = parse_compact ivv_signature
             ver = verify_ecdsa ivv_m pub sig
+            ver' = verify_ecdsa' tex ivv_m pub sig
         assertBool mempty (not ver)
+        assertBool mempty (not ver')
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral

@@ -27,7 +27,8 @@ main = do
     "etc/ecdsa_secp256k1_sha256_bitcoin_test.json"
   noble_ecdsa <- TIO.readFile "etc/noble_ecdsa.json"
   bip340 <- BS.readFile "etc/bip-0340-test-vectors.csv"
-  let quar = do
+  let !tex = precompute
+      quar = do
         wp0 <- A.decodeStrictText wp_ecdsa_sha256 :: Maybe W.Wycheproof
         wp1 <- A.decodeStrictText wp_ecdsa_sha256_bitcoin :: Maybe W.Wycheproof
         nob <- A.decodeStrictText noble_ecdsa :: Maybe N.Ecdsa
@@ -39,16 +40,17 @@ main = do
     Nothing -> error "couldn't parse wycheproof vectors"
     Just (w0, w1, no, ip) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
-      , wycheproof_ecdsa_verify_tests "(ecdsa, sha256)" Unrestricted w0
-      , wycheproof_ecdsa_verify_tests "(ecdsa, sha256, low-s)" LowS w1
-      , N.execute_ecdsa no
-      , testGroup "bip0340 vectors (schnorr)" (fmap BIP340.execute ip)
+      , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256)" Unrestricted w0
+      , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256, low-s)" LowS w1
+      , N.execute_ecdsa tex no
+      , testGroup "bip0340 vectors (schnorr)" (fmap (BIP340.execute tex) ip)
       ]
 
-wycheproof_ecdsa_verify_tests :: String -> SigType -> W.Wycheproof -> TestTree
-wycheproof_ecdsa_verify_tests msg ty W.Wycheproof {..} =
+wycheproof_ecdsa_verify_tests
+  :: Context -> String -> SigType -> W.Wycheproof -> TestTree
+wycheproof_ecdsa_verify_tests tex msg ty W.Wycheproof {..} =
   testGroup ("wycheproof vectors " <> msg) $
-    fmap (W.execute_group ty) wp_testGroups
+    fmap (W.execute_group tex ty) wp_testGroups
 
 units :: TestTree
 units = testGroup "unit tests" [

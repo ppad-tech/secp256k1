@@ -30,23 +30,24 @@ roll :: BS.ByteString -> Integer
 roll = BS.foldl' unstep 0 where
   unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
-execute_group :: SigType -> EcdsaTestGroup -> TestTree
-execute_group ty EcdsaTestGroup {..} =
-    testGroup msg (fmap (execute ty pk_uncompressed) etg_tests)
+execute_group :: Context -> SigType -> EcdsaTestGroup -> TestTree
+execute_group tex ty EcdsaTestGroup {..} =
+    testGroup msg (fmap (execute tex ty pk_uncompressed) etg_tests)
   where
     msg = "wycheproof (" <> T.unpack etg_type <> ", " <> T.unpack etg_sha <> ")"
     PublicKey {..} = etg_publicKey
 
-execute :: SigType -> Projective -> EcdsaVerifyTest -> TestTree
-execute ty pub EcdsaVerifyTest {..} = testCase report $ do
+execute :: Context -> SigType -> Projective -> EcdsaVerifyTest -> TestTree
+execute tex ty pub EcdsaVerifyTest {..} = testCase report $ do
     let msg = B16.decodeLenient (TE.encodeUtf8 t_msg)
         sig = toEcdsa t_sig
     case sig of
       Left _  -> assertBool mempty (t_result == "invalid")
       Right s -> do
         let ver = case ty of
-              LowS -> verify_ecdsa msg pub s
+              LowS -> verify_ecdsa msg pub s && verify_ecdsa' tex msg pub s
               Unrestricted -> verify_ecdsa_unrestricted msg pub s
+                           && verify_ecdsa_unrestricted' tex msg pub s
         if   t_result == "invalid"
         then assertBool mempty (not ver)
         else assertBool mempty ver
