@@ -1126,7 +1126,7 @@ verify_ecdsa m p sig@(ECDSA _ s)
 --   You can expect about a 2x performance increase when using this
 --   function, compared to 'verify_ecdsa'.
 --
---   let !tex = precompute
+--   >>> let !tex = precompute
 --   >>> verify_ecdsa' tex msg pub valid_sig
 --   True
 --   >>> verify_ecdsa' tex msg pub invalid_sig
@@ -1161,7 +1161,7 @@ verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_unsafe _CURVE_G)
 --   You can expect about a 2x performance increase when using this
 --   function, compared to 'verify_ecdsa_unrestricted'.
 --
---   let !tex = precompute
+--   >>> let !tex = precompute
 --   >>> verify_ecdsa_unrestricted' tex msg pub valid_sig
 --   True
 --   >>> verify_ecdsa_unrestricted' tex msg pub invalid_sig
