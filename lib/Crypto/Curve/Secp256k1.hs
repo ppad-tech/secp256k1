@@ -69,6 +69,7 @@ module Crypto.Curve.Secp256k1 (
   -- for testing/benchmarking
   , Word256(..)
   , _sign_ecdsa_no_hash
+  , _sign_ecdsa_no_hash'
   , _CURVE_P
   , _CURVE_Q
   , _CURVE_G
@@ -573,7 +574,7 @@ mul p _SECRET
           in  if   I.integerTestBit m 0
               then loop (succ j) (add acc d) f nd nm
               else loop (succ j) acc (add f d) nd nm
-{-# NOINLINE mul #-}
+{-# INLINE mul #-}
 
 -- Timing-unsafe scalar multiplication of secp256k1 points.
 --
@@ -642,38 +643,42 @@ _precompute ctxW = Context {..} where
 -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
 -- secp256k1 points.
 mul_wnaf :: Context -> Integer -> Projective
-mul_wnaf (Context capW tex) _SECRET =
+mul_wnaf Context {..} _SECRET =
     loop 0 _ZERO _CURVE_G _SECRET
   where
-    wins = 256 `quot` capW + 1
-    wsize = 2 ^ (capW - 1)
-    mask = 2 ^ capW - 1
-    mnum = 2 ^ capW
+    wins = 256 `quot` ctxW + 1
+    wsize = 2 ^ (ctxW - 1)
+    mask = 2 ^ ctxW - 1
+    mnum = 2 ^ ctxW
 
     loop !w !acc !f !n
       | w == wins = acc
       | otherwise =
-          let off0 = w * fi wsize
+          let !off0 = w * fi wsize
 
               -- XX check timing safety
 
-              b0 = n `I.integerAnd` mask
-              n0 = n `I.integerShiftR` fi capW
+              !b0 = n `I.integerAnd` mask
+              !n0 = n `I.integerShiftR` fi ctxW
 
-              (b1, n1) | b0 > wsize = (b0 - mnum, n0 + 1)
-                       | otherwise  = (b0, n0)
+              !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
+                            | otherwise  = Pair b0 n0
 
-              off1 = off0 + fi (abs b1) - 1
+              !c0 = B.testBit w 0
+              !c1 = b1 < 0
+
+              !off1 = off0 + fi (abs b1) - 1
 
           in  if   b1 == 0
-              then let !pr = A.indexArray tex off0
-                       !pt | w `quot` 2 /= 0 = neg pr -- XX integerTestBit w 0
+              then let !pr = A.indexArray ctxArray off0
+                       !pt | c0 = neg pr
                            | otherwise = pr
                    in  loop (w + 1) acc (add f pt) n1
-              else let !pr = A.indexArray tex off1
-                       !pt | b1 < 0 = neg pr
+              else let !pr = A.indexArray ctxArray off1
+                       !pt | c1 = neg pr
                            | otherwise = pr
                    in  loop (w + 1) (add acc pt) f n1
+{-# INLINE mul_wnaf #-}
 
 -- | Derive a public key (i.e., a secp256k1 point) from the provided
 --   secret.
@@ -850,6 +855,7 @@ _sign_schnorr _mul _SECRET m a
             in  if   verify_schnorr m p_proj sig
                 then sig
                 else error "ppad-secp256k1 (sign_schnorr): invalid signature"
+{-# INLINE _sign_schnorr #-}
 
 -- | Verify a 64-byte Schnorr signature for the provided message with
 --   the supplied public key.
@@ -906,6 +912,7 @@ _verify_schnorr _mul m (affine -> Affine x_p _) sig
                      then False
                      else let Affine x_R y_R = affine dif
                           in  not (I.integerTestBit y_R 0 || x_R /= r)
+{-# INLINE _verify_schnorr #-}
 
 -- ecdsa ----------------------------------------------------------------------
 -- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
@@ -1032,6 +1039,13 @@ _sign_ecdsa_no_hash
   -> ECDSA
 _sign_ecdsa_no_hash = _sign_ecdsa (mul _CURVE_G) LowS NoHash
 
+_sign_ecdsa_no_hash'
+  :: Context
+  -> Integer
+  -> BS.ByteString
+  -> ECDSA
+_sign_ecdsa_no_hash' tex = _sign_ecdsa (mul_wnaf tex) LowS NoHash
+
 _sign_ecdsa
   :: (Integer -> Projective) -- partially-applied multiplication function
   -> SigType
@@ -1068,6 +1082,7 @@ _sign_ecdsa _mul ty hf _SECRET m
              in  case ty of
                    Unrestricted -> pure sig
                    LowS -> pure (low sig)
+{-# INLINE _sign_ecdsa #-}
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Integer
@@ -1184,4 +1199,5 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
           then False
           else let Affine (modQ -> v) _ = affine capR
                in  v == r
+{-# INLINE _verify_ecdsa_unrestricted #-}
 
