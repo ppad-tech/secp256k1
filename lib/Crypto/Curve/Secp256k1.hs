@@ -32,20 +32,24 @@ module Crypto.Curve.Secp256k1 (
 
   -- * BIP0340 Schnorr signatures
   , sign_schnorr
-  , sign_schnorr'
   , verify_schnorr
-  , verify_schnorr'
 
   -- * RFC6979 ECDSA
   , ECDSA(..)
   , SigType(..)
   , sign_ecdsa
-  , sign_ecdsa'
   , sign_ecdsa_unrestricted
-  , sign_ecdsa_unrestricted'
   , verify_ecdsa
-  , verify_ecdsa'
   , verify_ecdsa_unrestricted
+
+  -- * Fast variants
+  , Context
+  , precompute
+  , sign_schnorr'
+  , verify_schnorr'
+  , sign_ecdsa'
+  , sign_ecdsa_unrestricted'
+  , verify_ecdsa'
   , verify_ecdsa_unrestricted'
 
   -- Elliptic curve group operations
@@ -54,9 +58,6 @@ module Crypto.Curve.Secp256k1 (
   , double
   , mul
   , mul_unsafe
-
-  , Context(..)
-  , precompute
   , mul_wnaf
 
   -- Coordinate systems and transformations
