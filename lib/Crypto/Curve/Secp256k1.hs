@@ -213,7 +213,7 @@ lift x
               | otherwise = y
       in  if   c /= modexp y 2 (fi _CURVE_P)
           then Nothing
-          else Just $! (Affine x y_p)
+          else Just $! Affine x y_p
 
 -- coordinate systems & transformations ---------------------------------------
 
