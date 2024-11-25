@@ -69,7 +69,6 @@ parse_point_tests = testGroup "parse_point tests" [
 render :: Show a => a -> String
 render = filter (`notElem` ("\"" :: String)) . show
 
--- XX replace these with something non-stupid
 parse_point_test_p :: TestTree
 parse_point_test_p = testCase (render p_hex) $
   case parse_point (B16.decodeLenient p_hex) of
@@ -88,7 +87,6 @@ parse_point_test_r = testCase (render r_hex) $
     Nothing -> assertFailure "bad parse"
     Just r  -> assertEqual mempty r_pro r
 
--- XX also make less dumb
 add_tests :: TestTree
 add_tests = testGroup "ec addition" [
     add_test_pq

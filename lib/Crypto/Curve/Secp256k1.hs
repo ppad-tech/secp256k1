@@ -24,6 +24,7 @@ module Crypto.Curve.Secp256k1 (
   -- * secp256k1 points
     Pub
   , derive_pub
+  , derive_pub'
 
   -- * Parsing
   , parse_int256
@@ -679,6 +680,22 @@ derive_pub _SECRET
   | otherwise =
       mul _CURVE_G _SECRET
 {-# NOINLINE derive_pub #-}
+
+-- | The same as 'derive_pub', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   >>> import qualified System.Entropy as E
+--   >>> sk <- fmap parse_int256 (E.getEntropy 32)
+--   >>> let !tex = precompute
+--   >>> derive_pub' tex sk
+--   "<secp256k1 point>"
+derive_pub' :: Context -> Integer -> Pub
+derive_pub' tex _SECRET
+  | not (ge _SECRET) =
+      error "ppad-secp256k1 (derive_pub): invalid secret key"
+  | otherwise =
+      mul_wnaf tex _SECRET
+{-# NOINLINE derive_pub' #-}
 
 -- parsing --------------------------------------------------------------------
 

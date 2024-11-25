@@ -92,14 +92,19 @@ mul_wnaf = env setup $ \ ~(tex, x) ->
       pure (tex, int)
 
 derive_pub :: Benchmark
-derive_pub = env setup $ \x ->
+derive_pub = env setup $ \ ~(tex, x) ->
     bgroup "derive_pub" [
       bench "sk = 2" $ nf S.derive_pub 2
     , bench "sk = 2 ^ 255 - 19" $ nf S.derive_pub x
+    , bench "wnaf, sk = 2" $ nf (S.derive_pub' tex) 2
+    , bench "wnaf, sk = 2 ^ 255 - 19" $ nf (S.derive_pub' tex) x
     ]
   where
-    setup = pure . S.parse_int256 $ B16.decodeLenient
-      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+    setup = do
+      let !tex = S.precompute
+          !int = S.parse_int256 $ B16.decodeLenient
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+      pure (tex, int)
 
 schnorr :: Benchmark
 schnorr = env setup $ \ ~(tex, big) ->
