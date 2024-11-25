@@ -60,28 +60,28 @@ Current benchmark figures on my mid-2020 MacBook Air look like (use
 
 ```
   benchmarking schnorr/sign_schnorr'
-  time                 3.109 ms   (3.030 ms .. 3.199 ms)
-                       0.994 R²   (0.992 R² .. 0.997 R²)
-  mean                 3.137 ms   (3.074 ms .. 3.226 ms)
-  std dev              233.7 μs   (168.9 μs .. 350.1 μs)
+  time                 2.557 ms   (2.534 ms .. 2.596 ms)
+                       0.998 R²   (0.997 R² .. 0.999 R²)
+  mean                 2.579 ms   (2.556 ms .. 2.605 ms)
+  std dev              83.75 μs   (69.50 μs .. 100.5 μs)
 
   benchmarking schnorr/verify_schnorr'
-  time                 1.659 ms   (1.585 ms .. 1.730 ms)
-                       0.990 R²   (0.985 R² .. 0.994 R²)
-  mean                 1.666 ms   (1.634 ms .. 1.700 ms)
-  std dev              114.0 μs   (97.55 μs .. 139.6 μs)
+  time                 1.429 ms   (1.381 ms .. 1.482 ms)
+                       0.993 R²   (0.987 R² .. 0.998 R²)
+  mean                 1.372 ms   (1.355 ms .. 1.396 ms)
+  std dev              67.72 μs   (50.44 μs .. 110.5 μs)
 
   benchmarking ecdsa/sign_ecdsa'
-  time                 273.9 μs   (266.3 μs .. 284.2 μs)
-                       0.991 R²   (0.985 R² .. 0.996 R²)
-  mean                 278.9 μs   (272.6 μs .. 286.5 μs)
-  std dev              23.33 μs   (18.96 μs .. 30.19 μs)
+  time                 233.7 μs   (230.3 μs .. 237.2 μs)
+                       0.997 R²   (0.996 R² .. 0.998 R²)
+  mean                 238.6 μs   (234.8 μs .. 243.3 μs)
+  std dev              14.85 μs   (12.27 μs .. 19.17 μs)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 1.579 ms   (1.534 ms .. 1.631 ms)
-                       0.958 R²   (0.887 R² .. 0.993 R²)
-  mean                 1.744 ms   (1.670 ms .. 1.991 ms)
-  std dev              375.2 μs   (173.8 μs .. 770.9 μs)
+  time                 1.460 ms   (1.418 ms .. 1.497 ms)
+                       0.994 R²   (0.989 R² .. 0.997 R²)
+  mean                 1.419 ms   (1.398 ms .. 1.446 ms)
+  std dev              80.76 μs   (66.73 μs .. 104.9 μs)
 ```
 
 ## Security
