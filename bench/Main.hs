@@ -14,7 +14,6 @@ instance NFData S.Projective
 instance NFData S.Affine
 instance NFData S.ECDSA
 instance NFData S.Context
-instance NFData S.Word256
 
 main :: IO ()
 main = defaultMain [

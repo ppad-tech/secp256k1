@@ -68,7 +68,6 @@ module Crypto.Curve.Secp256k1 (
   , valid
 
   -- for testing/benchmarking
-  , Word256(..)
   , _sign_ecdsa_no_hash
   , _sign_ecdsa_no_hash'
   , _CURVE_P
@@ -129,46 +128,33 @@ roll :: BS.ByteString -> Integer
 roll = BS.foldl' alg 0 where
   alg !a (fi -> !b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
-data Word256 = Word256
-    {-# UNPACK #-} !Word64
-    {-# UNPACK #-} !Word64
-    {-# UNPACK #-} !Word64
-    {-# UNPACK #-} !Word64
-  deriving (Eq, Show, Generic)
-
-word256_to_integer :: Word256 -> Integer
-word256_to_integer (Word256 w0 w1 w2 w3) =
-      (fi w0 `B.shiftL` 192)
-  .|. (fi w1 `B.shiftL` 128)
-  .|. (fi w2 `B.shiftL` 64)
-  .|. fi w3
-{-# INLINE word256_to_integer #-}
-
 -- /Note:/ there can be substantial differences in execution time
 -- when this function is called with "extreme" inputs. For example: a
 -- bytestring consisting entirely of 0x00 bytes will parse more quickly
 -- than one consisting of entirely 0xFF bytes. For appropriately-random
 -- inputs, timings should be indistinguishable.
 --
--- Using Word256 under the hood speeds up this function dramatically.
-
 -- 256-bit big-endian bytestring decoding. the input size is not checked!
 roll32 :: BS.ByteString -> Integer
-roll32 bs = word256_to_integer $! (go 0 0 0 0 0) where
+roll32 bs = go (0 :: Word64) (0 :: Word64) (0 :: Word64) (0 :: Word64) 0 where
   go !acc0 !acc1 !acc2 !acc3 !j
-    | j == 32  = Word256 acc0 acc1 acc2 acc3
+    | j == 32  =
+            (fi acc0 `B.unsafeShiftL` 192)
+        .|. (fi acc1 `B.unsafeShiftL` 128)
+        .|. (fi acc2 `B.unsafeShiftL` 64)
+        .|. fi acc3
     | j < 8    =
         let b = fi (BU.unsafeIndex bs j)
-        in  go ((acc0 `B.shiftL` 8) .|. b) acc1 acc2 acc3 (j + 1)
+        in  go ((acc0 `B.unsafeShiftL` 8) .|. b) acc1 acc2 acc3 (j + 1)
     | j < 16   =
         let b = fi (BU.unsafeIndex bs j)
-        in go acc0 ((acc1 `B.shiftL` 8) .|. b) acc2 acc3 (j + 1)
+        in go acc0 ((acc1 `B.unsafeShiftL` 8) .|. b) acc2 acc3 (j + 1)
     | j < 24   =
         let b = fi (BU.unsafeIndex bs j)
-        in go acc0 acc1 ((acc2 `B.shiftL` 8) .|. b) acc3 (j + 1)
+        in go acc0 acc1 ((acc2 `B.unsafeShiftL` 8) .|. b) acc3 (j + 1)
     | otherwise =
         let b = fi (BU.unsafeIndex bs j)
-        in go acc0 acc1 acc2 ((acc3 `B.shiftL` 8) .|. b) (j + 1)
+        in go acc0 acc1 acc2 ((acc3 `B.unsafeShiftL` 8) .|. b) (j + 1)
 {-# INLINE roll32 #-}
 
 -- this "looks" inefficient due to the call to reverse, but it's
