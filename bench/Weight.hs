@@ -26,7 +26,9 @@ main :: IO ()
 main = W.mainWith $ do
   remQ
   parse_int256
+  add
   mul
+  mul_unsafe
   mul_wnaf
   derive_pub
   schnorr
@@ -42,10 +44,23 @@ parse_int256 = W.wgroup "parse_int256" $ do
   W.func' "parse_int256 (small)" S.parse_int256 (BS.replicate 32 0x00)
   W.func' "parse_int256 (big)" S.parse_int256 (BS.replicate 32 0xFF)
 
+add :: W.Weigh ()
+add = W.wgroup " add" $ do
+  W.func "2 p (double, trivial projective point)" (S.add p) p
+  W.func "2 r (double, nontrivial projective point)" (S.add r) r
+  W.func "p + q (trivial projective points)" (S.add p) q
+  W.func "p + s (nontrivial mixed points)" (S.add p) s
+  W.func "s + r (nontrivial projective points)" (S.add s) r
+
 mul :: W.Weigh ()
 mul = W.wgroup "mul" $ do
   W.func "2 G" (S.mul S._CURVE_G) 2
   W.func "(2 ^ 255 - 19) G" (S.mul S._CURVE_G) big
+
+mul_unsafe :: W.Weigh ()
+mul_unsafe = W.wgroup "mul_unsafe" $ do
+  W.func "2 G" (S.mul_unsafe S._CURVE_G) 2
+  W.func "(2 ^ 255 - 19) G" (S.mul_unsafe S._CURVE_G) big
 
 mul_wnaf :: W.Weigh ()
 mul_wnaf = W.wgroup "mul_wnaf" $ do
@@ -105,4 +120,40 @@ s_msg = B16.decodeLenient
 s_aux :: BS.ByteString
 s_aux = B16.decodeLenient
   "0000000000000000000000000000000000000000000000000000000000000001"
+
+p_bs :: BS.ByteString
+p_bs = B16.decodeLenient
+  "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+
+p :: S.Projective
+p = case S.parse_point p_bs of
+  Nothing -> error "bang"
+  Just !pt -> pt
+
+q_bs :: BS.ByteString
+q_bs = B16.decodeLenient
+  "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+
+q :: S.Projective
+q = case S.parse_point q_bs of
+  Nothing -> error "bang"
+  Just !pt -> pt
+
+r_bs :: BS.ByteString
+r_bs = B16.decodeLenient
+  "03a2113cf152585d96791a42cdd78782757fbfb5c6b2c11b59857eb4f7fda0b0e8"
+
+r :: S.Projective
+r = case S.parse_point r_bs of
+  Nothing -> error "bang"
+  Just !pt -> pt
+
+s_bs :: BS.ByteString
+s_bs = B16.decodeLenient
+  "0306413898a49c93cccf3db6e9078c1b6a8e62568e4a4770e0d7d96792d1c580ad"
+
+s :: S.Projective
+s = case S.parse_point s_bs of
+  Nothing -> error "bang"
+  Just !pt -> pt
 

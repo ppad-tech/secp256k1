@@ -90,21 +90,13 @@ In terms of allocations, we get:
 schnorr
 
   Case                   Allocated  GCs
-  sign_schnorr (small)   7,227,408    1
-  sign_schnorr (large)   7,174,600    1
-  sign_schnorr' (small)  3,323,392    0
-  sign_schnorr' (large)  3,273,824    0
-  verify_schnorr         2,947,544    0
+  sign_schnorr'          3,273,824    0
   verify_schnorr'        1,667,360    0
 
 ecdsa
 
   Case                 Allocated  GCs
-  sign_ecdsa (small)   2,280,360    0
-  sign_ecdsa (large)   2,277,136    0
-  sign_ecdsa' (small)    326,624    0
-  sign_ecdsa' (large)    324,672    0
-  verify_ecdsa         5,014,264    1
+  sign_ecdsa'            324,672    0
   verify_ecdsa'        3,796,328    0
 ```
 
