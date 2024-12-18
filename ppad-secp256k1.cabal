@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               ppad-secp256k1
-version:            0.2.0
+version:            0.2.1
 synopsis:           Schnorr signatures & ECDSA on the elliptic curve secp256k1
 license:            MIT
 license-file:       LICENSE

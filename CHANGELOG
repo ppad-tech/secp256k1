@@ -1,5 +1,9 @@
 # Changelog
 
+- 0.2.1 (2024-12-18)
+  * Adds 'serialize_point' for compressed-format serialization of
+    secp256k1 points.
+
 - 0.2.0 (2024-11-08)
   * Adds wNAF ("w-ary non-adjacent form") scalar multiplication, as
     well as fast 'sign' and 'verify' variants for Schnorr and ECDSA
