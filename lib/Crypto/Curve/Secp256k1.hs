@@ -31,6 +31,9 @@ module Crypto.Curve.Secp256k1 (
   , parse_point
   , parse_sig
 
+  -- * Serializing
+  , serialize_point
+
   -- * BIP0340 Schnorr signatures
   , sign_schnorr
   , verify_schnorr
@@ -771,6 +774,17 @@ parse_sig bs
   | otherwise = pure $
       let (roll -> r, roll -> s) = BS.splitAt 32 bs
       in  ECDSA r s
+
+-- serializing ----------------------------------------------------------------
+
+-- | Serialize a secp256k1 point in 33-byte compressed form.
+--
+--   >>> serialize_point <secp256k1 point>
+--   "<33-byte bytestring>"
+serialize_point :: Projective -> BS.ByteString
+serialize_point (affine -> Affine x y) = BS.cons b (unroll32 x) where
+  b | I.integerTestBit y 0 = 0x03
+    | otherwise = 0x02
 
 -- schnorr --------------------------------------------------------------------
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki

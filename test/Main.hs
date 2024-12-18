@@ -55,6 +55,7 @@ wycheproof_ecdsa_verify_tests tex msg ty W.Wycheproof {..} =
 units :: TestTree
 units = testGroup "unit tests" [
     parse_point_tests
+  , serialize_point_tests
   , add_tests
   , dub_tests
   ]
@@ -64,6 +65,13 @@ parse_point_tests = testGroup "parse_point tests" [
     parse_point_test_p
   , parse_point_test_q
   , parse_point_test_r
+  ]
+
+serialize_point_tests :: TestTree
+serialize_point_tests = testGroup "serialize_point tests" [
+    serialize_point_test_p
+  , serialize_point_test_q
+  , serialize_point_test_r
   ]
 
 render :: Show a => a -> String
@@ -86,6 +94,18 @@ parse_point_test_r = testCase (render r_hex) $
   case parse_point (B16.decodeLenient r_hex) of
     Nothing -> assertFailure "bad parse"
     Just r  -> assertEqual mempty r_pro r
+
+serialize_point_test_p :: TestTree
+serialize_point_test_p = testCase (render p_hex) $
+  assertEqual mempty p_hex (B16.encode (serialize_point p_pro))
+
+serialize_point_test_q :: TestTree
+serialize_point_test_q = testCase (render q_hex) $
+  assertEqual mempty q_hex (B16.encode (serialize_point q_pro))
+
+serialize_point_test_r :: TestTree
+serialize_point_test_r = testCase (render r_hex) $
+  assertEqual mempty r_hex (B16.encode (serialize_point r_pro))
 
 add_tests :: TestTree
 add_tests = testGroup "ec addition" [
