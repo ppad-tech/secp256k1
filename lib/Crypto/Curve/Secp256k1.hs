@@ -182,15 +182,6 @@ unroll32 (unroll -> u)
   where
     l = BS.length u
 
--- replacing the following w/a series of functions with the hashed tags
--- hard-coded is possible, but there is virtually no performance benefit
-
--- (bip0340) tagged hash function
-hash_tagged :: BS.ByteString -> BS.ByteString -> BS.ByteString
-hash_tagged tag x =
-  let !h = SHA256.hash tag
-  in  SHA256.hash (h <> h <> x)
-
 -- (bip0340) return point with x coordinate == x and with even y coordinate
 lift :: Integer -> Maybe Affine
 lift x
@@ -845,11 +836,11 @@ _sign_schnorr _mul _SECRET m a
             | otherwise = _SECRET
 
           bytes_d = unroll32 d
-          h_a = hash_tagged "BIP0340/aux" a
+          h_a = hash_aux a
           t = xor bytes_d h_a
 
           bytes_p = unroll32 x_p
-          rand = hash_tagged "BIP0340/nonce" (t <> bytes_p <> m)
+          rand = hash_nonce (t <> bytes_p <> m)
 
           k' = modQ (roll32 rand)
 
@@ -861,7 +852,7 @@ _sign_schnorr _mul _SECRET m a
                   | otherwise = k'
 
                 bytes_r = unroll32 x_r
-                e = modQ . roll32 . hash_tagged "BIP0340/challenge"
+                e = modQ . roll32 . hash_challenge
                   $ bytes_r <> bytes_p <> m
 
                 bytes_ked = unroll32 (modQ (k + e * d))
@@ -920,7 +911,7 @@ _verify_schnorr _mul m (affine -> Affine x_p _) sig
         let (roll32 -> r, roll32 -> s) = BS.splitAt 32 sig
         in  if   r >= _CURVE_P || s >= _CURVE_Q
             then False
-            else let e = modQ . roll32 $ hash_tagged "BIP0340/challenge"
+            else let e = modQ . roll32 $ hash_challenge
                            (unroll32 r <> unroll32 x_P <> m)
                      dif = add (_mul s)
                                (neg (mul_unsafe (projective capP) e))
@@ -929,6 +920,27 @@ _verify_schnorr _mul m (affine -> Affine x_p _) sig
                      else let Affine x_R y_R = affine dif
                           in  not (I.integerTestBit y_R 0 || x_R /= r)
 {-# INLINE _verify_schnorr #-}
+
+-- hardcoded tag of BIP0340/aux
+--
+-- \x -> let h = SHA256.hash "BIP0340/aux"
+--       in  SHA256.hash (h <> h <> x)
+hash_aux :: BS.ByteString -> BS.ByteString
+hash_aux x = SHA256.hash $
+  "\241\239N^\192c\202\218m\148\202\250\157\152~\160i&X9\236\193\US\151-w\165.\216\193\204\144\241\239N^\192c\202\218m\148\202\250\157\152~\160i&X9\236\193\US\151-w\165.\216\193\204\144" <> x
+{-# INLINE hash_aux #-}
+
+-- hardcoded tag of BIP0340/nonce
+hash_nonce :: BS.ByteString -> BS.ByteString
+hash_nonce x = SHA256.hash $
+  "\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/" <> x
+{-# INLINE hash_nonce #-}
+
+-- hardcoded tag of BIP0340/challenge
+hash_challenge :: BS.ByteString -> BS.ByteString
+hash_challenge x = SHA256.hash $
+  "{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|" <> x
+{-# INLINE hash_challenge #-}
 
 -- ecdsa ----------------------------------------------------------------------
 -- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
