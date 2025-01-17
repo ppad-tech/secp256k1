@@ -158,11 +158,11 @@
         "nixpkgs": "nixpkgs_3"
       },
       "locked": {
-        "lastModified": 1728824578,
-        "narHash": "sha256-sMZLvmbl3fBUHpBePzGuLdUyUALba/P5DCgKVgqEH1k=",
+        "lastModified": 1737140591,
+        "narHash": "sha256-jsIDUQuxf7iv/r0Yxn6yCMRVhgq7Sk0SNjwdQ9GhASU=",
         "ref": "master",
-        "rev": "3cc6c146ae36f67d73c6c207486a199dbc77658e",
-        "revCount": 82,
+        "rev": "c1d5aa2a01d183f2ef71573cdba4591ce0f7b59c",
+        "revCount": 86,
         "type": "git",
         "url": "git://git.ppad.tech/sha256.git"
       },
