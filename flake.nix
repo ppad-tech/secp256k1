@@ -11,18 +11,29 @@
       type = "git";
       url  = "git://git.ppad.tech/sha256.git";
       ref  = "master";
+      inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
+    };
+    ppad-sha512 = {
+      type = "git";
+      url  = "git://git.ppad.tech/sha512.git";
+      ref  = "master";
+      inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
     ppad-hmac-drbg = {
       type = "git";
       url  = "git://git.ppad.tech/hmac-drbg.git";
       ref  = "master";
+      inputs.ppad-sha256.follows = "ppad-sha256";
+      inputs.ppad-sha512.follows = "ppad-sha512";
+      inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
     flake-utils.follows = "ppad-nixpkgs/flake-utils";
     nixpkgs.follows = "ppad-nixpkgs/nixpkgs";
   };
 
   outputs = { self, nixpkgs, flake-utils, ppad-nixpkgs
-            , ppad-sha256, ppad-hmac-drbg
+            , ppad-sha256, ppad-sha512
+            , ppad-hmac-drbg
             }:
     flake-utils.lib.eachDefaultSystem (system:
       let
