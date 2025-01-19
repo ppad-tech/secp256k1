@@ -2,6 +2,11 @@
   description = "Pure Haskell Schnorr, ECDSA on secp256k1";
 
   inputs = {
+    ppad-nixpkgs = {
+      type = "git";
+      url  = "git://git.ppad.tech/nixpkgs.git";
+      ref  = "master";
+    };
     ppad-sha256 = {
       type = "git";
       url  = "git://git.ppad.tech/sha256.git";
@@ -12,11 +17,13 @@
       url  = "git://git.ppad.tech/hmac-drbg.git";
       ref  = "master";
     };
-    flake-utils.follows = "ppad-sha256/flake-utils";
-    nixpkgs.follows = "ppad-sha256/nixpkgs";
+    flake-utils.follows = "ppad-nixpkgs/flake-utils";
+    nixpkgs.follows = "ppad-nixpkgs/nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ppad-sha256, ppad-hmac-drbg }:
+  outputs = { self, nixpkgs, flake-utils, ppad-nixpkgs
+            , ppad-sha256, ppad-hmac-drbg
+            }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         lib = "ppad-secp256k1";
