@@ -347,8 +347,8 @@ modsqrtP n = runST $ do
         when (ev > 0) $ do
           when (I.integerTestBit ev 0) $ do
             numv <- readSTRef num
-            modifySTRef' r (\rv -> (rv * numv) `I.integerRem` _CURVE_P)
-          modifySTRef' num (\numv -> (numv * numv) `I.integerRem` _CURVE_P)
+            modifySTRef' r (\rv -> remP (rv * numv))
+          modifySTRef' num (\numv -> remP (numv * numv))
           modifySTRef' e (`I.integerShiftR` 1)
           loop
 
