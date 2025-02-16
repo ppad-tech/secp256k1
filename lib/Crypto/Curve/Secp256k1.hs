@@ -21,10 +21,18 @@
 -- "low-S" signatures) on the elliptic curve secp256k1.
 
 module Crypto.Curve.Secp256k1 (
+  -- * Field and group parameters
+    _CURVE_Q
+  , _CURVE_P
+  , remQ
+  , modQ
+
   -- * secp256k1 points
-    Pub
+  , Pub
   , derive_pub
   , derive_pub'
+  , _CURVE_G
+  , _CURVE_ZERO
 
   -- * Parsing
   , parse_int256
@@ -74,11 +82,6 @@ module Crypto.Curve.Secp256k1 (
   -- for testing/benchmarking
   , _sign_ecdsa_no_hash
   , _sign_ecdsa_no_hash'
-  , _CURVE_P
-  , _CURVE_Q
-  , _CURVE_G
-  , remQ
-  , modQ
   ) where
 
 import Control.Monad (when)
@@ -228,7 +231,7 @@ type Pub = Projective
 -- Convert to affine coordinates.
 affine :: Projective -> Affine
 affine p@(Projective x y z)
-  | p == _ZERO = Affine 0 0
+  | p == _CURVE_ZERO = Affine 0 0
   | z == 1     = Affine x y
   | otherwise  = case modinv z (fi _CURVE_P) of
       Nothing -> error "ppad-secp256k1 (affine): impossible point"
@@ -237,7 +240,7 @@ affine p@(Projective x y z)
 -- Convert to projective coordinates.
 projective :: Affine -> Projective
 projective (Affine x y)
-  | x == 0 && y == 0 = _ZERO
+  | x == 0 && y == 0 = _CURVE_ZERO
   | otherwise = Projective x y 1
 
 -- Point is valid
@@ -251,13 +254,13 @@ valid p = case affine p of
 -- curve parameters -----------------------------------------------------------
 -- see https://www.secg.org/sec2-v2.pdf for parameter specs
 
--- secp256k1 field prime
+-- | secp256k1 field prime.
 --
--- = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
+--   = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
 _CURVE_P :: Integer
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
--- secp256k1 group order
+-- | secp256k1 group order.
 _CURVE_Q :: Integer
 _CURVE_Q = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
@@ -281,7 +284,7 @@ _CURVE_A = 0
 _CURVE_B :: Integer
 _CURVE_B = 7
 
--- secp256k1 generator
+-- | secp256k1 generator point.
 --
 -- = parse_point
 --     "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
@@ -290,9 +293,14 @@ _CURVE_G = Projective x y 1 where
   x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
   y = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
 
+-- | secp256k1 zero point / point at infinity / monoidal identity.
+_CURVE_ZERO :: Projective
+_CURVE_ZERO = Projective 0 1 0
+
 -- secp256k1 zero point / point at infinity / monoidal identity
 _ZERO :: Projective
 _ZERO = Projective 0 1 0
+{-# DEPRECATED _ZERO "use _CURVE_ZERO instead" #-}
 
 -- secp256k1 in prime order j-invariant 0 form (i.e. a == 0).
 weierstrass :: Integer -> Integer
@@ -312,13 +320,12 @@ remP :: Integer -> Integer
 remP a = I.integerRem a _CURVE_P
 {-# INLINE remP #-}
 
--- Division modulo secp256k1 group order.
+-- | Division modulo secp256k1 group order.
 modQ :: Integer -> Integer
 modQ a = I.integerMod a _CURVE_Q
 {-# INLINE modQ #-}
 
--- Division modulo secp256k1 group order, when argument is nonnegative.
--- (more efficient than modQ)
+-- | Division modulo secp256k1 group order, when argument is nonnegative.
 remQ :: Integer -> Integer
 remQ a = I.integerRem a _CURVE_Q
 {-# INLINE remQ #-}
@@ -546,7 +553,7 @@ double (Projective x y z) = runST $ do
 mul :: Projective -> Integer -> Projective
 mul p _SECRET
     | not (ge _SECRET) = error "ppad-secp256k1 (mul): scalar not in group"
-    | otherwise  = loop (0 :: Int) _ZERO _CURVE_G p _SECRET
+    | otherwise  = loop (0 :: Int) _CURVE_ZERO _CURVE_G p _SECRET
   where
     loop !j !acc !f !d !m
       | j == _CURVE_Q_BITS = acc
@@ -563,10 +570,10 @@ mul p _SECRET
 -- Don't use this function if the scalar could potentially be a secret.
 mul_unsafe :: Projective -> Integer -> Projective
 mul_unsafe p n
-    | n == 0 = _ZERO
+    | n == 0 = _CURVE_ZERO
     | not (ge n) =
         error "ppad-secp256k1 (mul_unsafe): scalar not in group"
-    | otherwise  = loop _ZERO p n
+    | otherwise  = loop _CURVE_ZERO p n
   where
     loop !r !d m
       | m <= 0 = r
@@ -626,7 +633,7 @@ _precompute ctxW = Context {..} where
 -- secp256k1 points.
 mul_wnaf :: Context -> Integer -> Projective
 mul_wnaf Context {..} _SECRET =
-    loop 0 _ZERO _CURVE_G _SECRET
+    loop 0 _CURVE_ZERO _CURVE_G _SECRET
   where
     wins = 256 `quot` ctxW + 1
     wsize = 2 ^ (ctxW - 1)
@@ -915,7 +922,7 @@ _verify_schnorr _mul m (affine -> Affine x_p _) sig
                            (unroll32 r <> unroll32 x_P <> m)
                      dif = add (_mul s)
                                (neg (mul_unsafe (projective capP) e))
-                 in  if   dif == _ZERO
+                 in  if   dif == _CURVE_ZERO
                      then False
                      else let Affine x_R y_R = affine dif
                           in  not (I.integerTestBit y_R 0 || x_R /= r)
@@ -1223,7 +1230,7 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
           u1   = remQ (e * s_inv)
           u2   = remQ (r * s_inv)
           capR = add (_mul u1) (mul_unsafe p u2)
-      in  if   capR == _ZERO
+      in  if   capR == _CURVE_ZERO
           then False
           else let Affine (modQ -> v) _ = affine capR
                in  v == r
