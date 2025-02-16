@@ -1,5 +1,8 @@
 # Changelog
 
+- 0.2.2 (2025-02-16)
+  * Exports the secp256k1 "point at infinity" as _CURVE_ZERO.
+
 - 0.2.1 (2024-12-18)
   * Adds 'serialize_point' for compressed-format serialization of
     secp256k1 points.
