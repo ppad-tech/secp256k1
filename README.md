@@ -1,4 +1,4 @@
-# ppad-secp256k1
+# secp256k1
 
 [![](https://img.shields.io/hackage/v/ppad-secp256k1?color=blue)](https://hackage.haskell.org/package/ppad-secp256k1)
 ![](https://img.shields.io/badge/license-MIT-brightgreen)
