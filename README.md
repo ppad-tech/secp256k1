@@ -1,5 +1,8 @@
 # ppad-secp256k1
 
+[![](https://img.shields.io/hackage/v/ppad-secp256k1?color=blue)](https://hackage.haskell.org/package/ppad-secp256k1)
+![](https://img.shields.io/badge/license-MIT-brightgreen)
+
 A pure Haskell implementation of [BIP0340][bp340] Schnorr signatures
 and deterministic [RFC6979][r6979] ECDSA (with [BIP0146][bp146]-style
 "low-S" signatures) on the elliptic curve secp256k1.
