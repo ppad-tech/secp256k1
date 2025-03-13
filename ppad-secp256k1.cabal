@@ -41,6 +41,7 @@ test-suite secp256k1-tests
       BIP340
     , Noble
     , Wycheproof
+    , WycheproofEcdh
 
   ghc-options:
     -rtsopts -Wall
