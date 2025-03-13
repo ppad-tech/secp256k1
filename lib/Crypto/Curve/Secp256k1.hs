@@ -42,6 +42,9 @@ module Crypto.Curve.Secp256k1 (
   -- * Serializing
   , serialize_point
 
+  -- * ECDH
+  , ecdh
+
   -- * BIP0340 Schnorr signatures
   , sign_schnorr
   , verify_schnorr
@@ -1235,4 +1238,25 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
           else let Affine (modQ -> v) _ = affine capR
                in  v == r
 {-# INLINE _verify_ecdsa_unrestricted #-}
+
+-- ecdh -----------------------------------------------------------------------
+
+-- SEC1-v2 3.3.1
+
+-- | Compute a shared secret, given a secret key and public secp256k1 point,
+--   via Elliptic Curve Diffie-Hellman (ECDH).
+--
+--   The shared secret is the SHA256 hash of the compressed secp256k1
+--   point obtained by scalar multiplication.
+ecdh
+  :: Integer       -- ^ secret key
+  -> Projective    -- ^ public key
+  -> BS.ByteString -- ^ shared secret
+ecdh _SECRET pub
+  | not (ge _SECRET)   = error "ppad-secp256k1 (ecdh): invalid secret key"
+  | otherwise =
+      let pt = mul pub _SECRET
+      in  if   pt == _CURVE_ZERO
+          then error "ppad-secp256k1 (ecdh): invalid public key"
+          else SHA256.hash (serialize_point pt)
 
