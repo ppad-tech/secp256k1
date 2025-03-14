@@ -9,15 +9,15 @@ module WycheproofEcdh (
   ) where
 
 import Crypto.Curve.Secp256k1
+import qualified Crypto.Hash.SHA256 as SHA256
 import Data.Aeson ((.:))
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
-import Data.Bits ((.<<.), (.|.))
+import Data.Bits ((.<<.), (.>>.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified GHC.Num.Integer as I
 import Test.Tasty (TestTree, testGroup)
 import qualified Test.Tasty.HUnit as H (assertBool, assertEqual, testCase)
 
@@ -42,10 +42,11 @@ execute EcdhTest {..} = H.testCase report $ do
         --
         H.assertBool "invalid" (t_result `elem` ["invalid", "acceptable"])
       Right pub -> do
-        let sec = parse_bigint t_private
-            sar = parse_bigint t_shared
-            Affine x_out _ = affine (mul_unsafe pub sec) -- faster
-        H.assertEqual mempty sar x_out
+        let sec   = parse_bigint t_private
+            sar   = parse_bigint t_shared
+            h_sar = SHA256.hash (unroll32 sar)
+            out   = ecdh pub sec
+        H.assertEqual mempty h_sar out
   where
     report = "wycheproof ecdh " <> show t_tcId
 
@@ -61,14 +62,14 @@ execute EcdhTest {..} = H.testCase report $ do
 parse_der_pub :: AT.Parser Projective
 parse_der_pub = do
   _ <- AT.word8 0x30 -- SEQUENCE
-  len <- fmap fi AT.anyWord8
+  _ <- AT.anyWord8
   _ <- parse_der_algo
   parse_der_subjectpubkey
 
 parse_der_algo :: AT.Parser ()
 parse_der_algo = do
   _ <- AT.word8 0x30 -- SEQUENCE
-  _ <- fmap fi AT.anyWord8 -- XX check
+  _ <- AT.anyWord8
   _ <- parse_der_ecpubkey
   _ <- parse_der_secp256k1
   pure ()
@@ -127,6 +128,34 @@ parse_der_subjectpubkey = do
         Nothing -> fail "invalid content"
         Just pt -> pure pt
 
+der_to_pub :: T.Text -> Either String Projective
+der_to_pub (B16.decodeLenient . TE.encodeUtf8 -> bs) =
+  AT.parseOnly parse_der_pub bs
+
+parse_bigint :: T.Text -> Integer
+parse_bigint (B16.decodeLenient . TE.encodeUtf8 -> bs) = roll bs where
+  roll :: BS.ByteString -> Integer
+  roll = BS.foldl' alg 0 where
+    alg !a (fi -> !b) = (a .<<. 8) .|. b
+
+-- big-endian bytestring encoding
+unroll :: Integer -> BS.ByteString
+unroll i = case i of
+    0 -> BS.singleton 0
+    _ -> BS.reverse $ BS.unfoldr step i
+  where
+    step 0 = Nothing
+    step m = Just (fi m, m .>>. 8)
+
+-- big-endian bytestring encoding for 256-bit ints, left-padding with
+-- zeros if necessary. the size of the integer is not checked.
+unroll32 :: Integer -> BS.ByteString
+unroll32 (unroll -> u)
+    | l < 32 = BS.replicate (32 - l) 0 <> u
+    | otherwise = u
+  where
+    l = BS.length u
+
 data Wycheproof = Wycheproof {
     wp_testGroups :: ![EcdhTestGroup]
   } deriving Show
@@ -142,16 +171,6 @@ data EcdhTestGroup = EcdhTestGroup {
 instance A.FromJSON EcdhTestGroup where
   parseJSON = A.withObject "EcdhTestGroup" $ \m -> EcdhTestGroup
     <$> m .: "tests"
-
-der_to_pub :: T.Text -> Either String Projective
-der_to_pub (B16.decodeLenient . TE.encodeUtf8 -> bs) =
-  AT.parseOnly parse_der_pub bs
-
-parse_bigint :: T.Text -> Integer
-parse_bigint (B16.decodeLenient . TE.encodeUtf8 -> bs) = roll bs where
-  roll :: BS.ByteString -> Integer
-  roll = BS.foldl' alg 0 where
-    alg !a (fi -> !b) = (a .<<. 8) .|. b
 
 data EcdhTest = EcdhTest {
     t_tcId    :: !Int

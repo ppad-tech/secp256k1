@@ -44,11 +44,11 @@ main = do
     Nothing -> error "couldn't parse wycheproof vectors"
     Just (w0, w1, w2, no, ip) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
-      -- , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256)" Unrestricted w0
-      -- , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256, low-s)" LowS w1
+      , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256)" Unrestricted w0
+      , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256, low-s)" LowS w1
       , wycheproof_ecdh_tests "(ecdh)" w2
-      -- , N.execute_ecdsa tex no
-      -- , testGroup "bip0340 vectors (schnorr)" (fmap (BIP340.execute tex) ip)
+      , N.execute_ecdsa tex no
+      , testGroup "bip0340 vectors (schnorr)" (fmap (BIP340.execute tex) ip)
       ]
 
 wycheproof_ecdsa_verify_tests

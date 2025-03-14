@@ -53,6 +53,7 @@ test-suite secp256k1-tests
     , base16-bytestring
     , bytestring
     , ppad-secp256k1
+    , ppad-sha256
     , tasty
     , tasty-hunit
     , text
