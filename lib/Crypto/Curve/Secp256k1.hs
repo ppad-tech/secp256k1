@@ -1246,17 +1246,20 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
 -- | Compute a shared secret, given a secret key and public secp256k1 point,
 --   via Elliptic Curve Diffie-Hellman (ECDH).
 --
---   The shared secret is the SHA256 hash of the compressed secp256k1
+--   The shared secret is the SHA256 hash of the x-coordinate of the
 --   point obtained by scalar multiplication.
+--
+--
 ecdh
-  :: Integer       -- ^ secret key
-  -> Projective    -- ^ public key
+  :: Projective    -- ^ public key
+  -> Integer       -- ^ secret key
   -> BS.ByteString -- ^ shared secret
-ecdh _SECRET pub
-  | not (ge _SECRET)   = error "ppad-secp256k1 (ecdh): invalid secret key"
+ecdh pub _SECRET
+  | not (ge _SECRET) = error "ppad-secp256k1 (ecdh): invalid secret key"
   | otherwise =
       let pt = mul pub _SECRET
       in  if   pt == _CURVE_ZERO
           then error "ppad-secp256k1 (ecdh): invalid public key"
-          else SHA256.hash (serialize_point pt)
+          else let Affine x _ = affine pt
+               in  SHA256.hash (unroll32 x)
 
