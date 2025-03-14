@@ -34,7 +34,13 @@ execute_group EcdhTestGroup {..} =
 execute :: EcdhTest -> TestTree
 execute EcdhTest {..} = H.testCase report $ do
     case der_to_pub t_public of
-      Left _ -> H.assertBool "invalid" (t_result == "invalid")
+      Left _ ->
+        -- 'acceptable' in wycheproof-speak means that a public key
+        -- contains a parameter that, whilst invalid, doesn't actually
+        -- affect the ECDH computation. we work only with valid
+        -- secp256k1 points, so rule these out as invalid as well.
+        --
+        H.assertBool "invalid" (t_result `elem` ["invalid", "acceptable"])
       Right pub -> do
         let sec = parse_bigint t_private
             sar = parse_bigint t_shared
