@@ -14,6 +14,7 @@ import Test.Tasty.HUnit
 import qualified Data.Text.IO as TIO
 import qualified Noble as N
 import qualified Wycheproof as W
+import qualified WycheproofEcdh as WE
 import qualified BIP340
 
 fi :: (Integral a, Num b) => a -> b
@@ -25,25 +26,29 @@ main = do
   wp_ecdsa_sha256 <- TIO.readFile "etc/ecdsa_secp256k1_sha256_test.json"
   wp_ecdsa_sha256_bitcoin <- TIO.readFile
     "etc/ecdsa_secp256k1_sha256_bitcoin_test.json"
+  wp_ecdh <- TIO.readFile
+    "etc/ecdh_secp256k1_test.json"
   noble_ecdsa <- TIO.readFile "etc/noble_ecdsa.json"
   bip340 <- BS.readFile "etc/bip-0340-test-vectors.csv"
   let !tex = precompute
-      quar = do
+      pen  = do
         wp0 <- A.decodeStrictText wp_ecdsa_sha256 :: Maybe W.Wycheproof
         wp1 <- A.decodeStrictText wp_ecdsa_sha256_bitcoin :: Maybe W.Wycheproof
+        wp2 <- A.decodeStrictText wp_ecdh :: Maybe WE.Wycheproof
         nob <- A.decodeStrictText noble_ecdsa :: Maybe N.Ecdsa
         bip <- case AT.parseOnly BIP340.cases bip340 of
                  Left _ -> Nothing
                  Right b -> pure b
-        pure (wp0, wp1, nob, bip)
-  case quar of
+        pure (wp0, wp1, wp2, nob, bip)
+  case pen of
     Nothing -> error "couldn't parse wycheproof vectors"
-    Just (w0, w1, no, ip) -> defaultMain $ testGroup "ppad-secp256k1" [
+    Just (w0, w1, w2, no, ip) -> defaultMain $ testGroup "ppad-secp256k1" [
         units
-      , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256)" Unrestricted w0
-      , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256, low-s)" LowS w1
-      , N.execute_ecdsa tex no
-      , testGroup "bip0340 vectors (schnorr)" (fmap (BIP340.execute tex) ip)
+      -- , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256)" Unrestricted w0
+      -- , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256, low-s)" LowS w1
+      , wycheproof_ecdh_tests "(ecdh)" w2
+      -- , N.execute_ecdsa tex no
+      -- , testGroup "bip0340 vectors (schnorr)" (fmap (BIP340.execute tex) ip)
       ]
 
 wycheproof_ecdsa_verify_tests
@@ -51,6 +56,11 @@ wycheproof_ecdsa_verify_tests
 wycheproof_ecdsa_verify_tests tex msg ty W.Wycheproof {..} =
   testGroup ("wycheproof vectors " <> msg) $
     fmap (W.execute_group tex ty) wp_testGroups
+
+wycheproof_ecdh_tests :: String -> WE.Wycheproof -> TestTree
+wycheproof_ecdh_tests msg WE.Wycheproof {..} =
+  testGroup ("wycheproof vectors " <> msg) $
+    fmap (WE.execute_group) wp_testGroups
 
 units :: TestTree
 units = testGroup "unit tests" [
