@@ -15,10 +15,11 @@
 -- Maintainer: Jared Tobin <jared@ppad.tech>
 --
 -- Pure [BIP0340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki)
--- Schnorr signatures and deterministic
+-- Schnorr signatures, deterministic
 -- [RFC6979](https://www.rfc-editor.org/rfc/rfc6979) ECDSA (with
 -- [BIP0146](https://github.com/bitcoin/bips/blob/master/bip-0146.mediawiki)-style
--- "low-S" signatures) on the elliptic curve secp256k1.
+-- "low-S" signatures), and ECDH shared secret computation
+--  on the elliptic curve secp256k1.
 
 module Crypto.Curve.Secp256k1 (
   -- * Field and group parameters
@@ -1241,7 +1242,7 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
 
 -- ecdh -----------------------------------------------------------------------
 
--- SEC1-v2 3.3.1, plus hash
+-- SEC1-v2 3.3.1, plus SHA256 hash
 
 -- | Compute a shared secret, given a secret key and public secp256k1 point,
 --   via Elliptic Curve Diffie-Hellman (ECDH).

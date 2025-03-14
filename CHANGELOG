@@ -1,5 +1,9 @@
 # Changelog
 
+- 0.3.0 (2025-03-14)
+  * Adds 'ecdh' for computing ECDH secrets, any given secret being the
+    SHA256 hash of the x-coordinate of the appropriate secp256k1 point.
+
 - 0.2.2 (2025-02-16)
   * Exports the secp256k1 "point at infinity" as _CURVE_ZERO.
 
