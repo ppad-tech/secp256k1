@@ -12,7 +12,7 @@ import Crypto.Curve.Secp256k1
 import Data.Aeson ((.:))
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
-import qualified Data.Bits as B
+import Data.Bits ((.<<.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
@@ -36,8 +36,8 @@ execute EcdhTest {..} = H.testCase report $ do
     let pub = case der_to_pub t_public of
           Left _ -> error "der_to_pub failed"
           Right p -> p
-        sec = to_sec t_private
-        sar = x_coor t_shared
+        sec = parse_bigint t_private
+        sar = parse_bigint t_shared
 
         Affine x_out _ = affine (mul_unsafe pub sec) -- faster
 
@@ -143,12 +143,11 @@ der_to_pub :: T.Text -> Either String Projective
 der_to_pub (B16.decodeLenient . TE.encodeUtf8 -> bs) =
   AT.parseOnly parse_der_pub bs
 
-x_coor :: T.Text -> Integer
-x_coor (B16.decodeLenient . TE.encodeUtf8 -> bs) = parse_int256 bs
-
-to_sec :: T.Text -> Integer
-to_sec (B16.decodeLenient . TE.encodeUtf8 -> bs) =
-  parse_int256 (BS.drop 1 bs) -- drop leading zero byte
+parse_bigint :: T.Text -> Integer
+parse_bigint (B16.decodeLenient . TE.encodeUtf8 -> bs) = roll bs where
+  roll :: BS.ByteString -> Integer
+  roll = BS.foldl' alg 0 where
+    alg !a (fi -> !b) = (a .<<. 8) .|. b
 
 data EcdhTest = EcdhTest {
     t_tcId    :: !Int
