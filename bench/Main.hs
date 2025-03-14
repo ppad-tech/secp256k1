@@ -25,6 +25,7 @@ main = defaultMain [
   , derive_pub
   , schnorr
   , ecdsa
+  , ecdh
   ]
 
 remQ :: Benchmark
@@ -142,6 +143,20 @@ ecdsa = env setup $ \ ~(tex, big, pub, msg, sig) ->
           msg = "i approve of this message"
           sig = S.sign_ecdsa big s_msg
       pure (tex, big, pub, msg, sig)
+
+ecdh :: Benchmark
+ecdh = env setup $ \ ~(big, pub) ->
+    bgroup "ecdh" [
+      bench "ecdh (small)" $ nf (S.ecdh pub) 2
+    , bench "ecdh (large)" $ nf (S.ecdh pub) big
+    ]
+  where
+    setup = do
+      let !big =
+            0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
+          !(Just !pub) = S.parse_point . B16.decodeLenient $
+            "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
+      pure (big, pub)
 
 p_bs :: BS.ByteString
 p_bs = B16.decodeLenient
