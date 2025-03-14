@@ -1249,7 +1249,14 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
 --   The shared secret is the SHA256 hash of the x-coordinate of the
 --   point obtained by scalar multiplication.
 --
---
+--   >>> let sec_alice = 0x03                   -- contrived
+--   >>> let sec_bob   = 2 ^ 128 - 1            -- contrived
+--   >>> let pub_alice = derive_pub sec_alice
+--   >>> let pub_bob   = derive_pub sec_bob
+--   >>> let secret_as_computed_by_alice = ecdh pub_bob sec_alice
+--   >>> let secret_as_computed_by_bob   = ecdh pub_alice sec_bob
+--   >>> secret_as_computed_by_alice == secret_as_computed_by_bob
+--   True
 ecdh
   :: Projective    -- ^ public key
   -> Integer       -- ^ secret key
