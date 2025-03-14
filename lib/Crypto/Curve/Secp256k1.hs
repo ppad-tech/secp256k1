@@ -1241,7 +1241,7 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
 
 -- ecdh -----------------------------------------------------------------------
 
--- SEC1-v2 3.3.1
+-- SEC1-v2 3.3.1, plus hash
 
 -- | Compute a shared secret, given a secret key and public secp256k1 point,
 --   via Elliptic Curve Diffie-Hellman (ECDH).
