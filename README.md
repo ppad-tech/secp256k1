@@ -4,9 +4,10 @@
 ![](https://img.shields.io/badge/license-MIT-brightgreen)
 [![](https://img.shields.io/badge/haddock-secp256k1-lightblue)](https://docs.ppad.tech/secp256k1)
 
-A pure Haskell implementation of [BIP0340][bp340] Schnorr signatures
-and deterministic [RFC6979][r6979] ECDSA (with [BIP0146][bp146]-style
-"low-S" signatures) on the elliptic curve secp256k1.
+A pure Haskell implementation of [BIP0340][bp340] Schnorr signatures,
+deterministic [RFC6979][r6979] ECDSA (with [BIP0146][bp146]-style
+"low-S" signatures), ECDH, and various primitives on the elliptic curve
+secp256k1.
 
 (See also [ppad-csecp256k1][csecp] for FFI bindings to
 bitcoin-core/secp256k1.)
@@ -59,33 +60,33 @@ Haddocks (API documentation, etc.) are hosted at
 The aim is best-in-class performance for pure, highly-auditable Haskell
 code.
 
-Current benchmark figures on my mid-2020 MacBook Air look like (use
-`cabal bench` to run the benchmark suite):
+Current benchmark figures on a relatively-beefy NixOS VPS look like
+(use `cabal bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr'
-  time                 2.557 ms   (2.534 ms .. 2.596 ms)
-                       0.998 R²   (0.997 R² .. 0.999 R²)
-  mean                 2.579 ms   (2.556 ms .. 2.605 ms)
-  std dev              83.75 μs   (69.50 μs .. 100.5 μs)
+  time                 2.584 ms   (2.491 ms .. 2.646 ms)
+                       0.994 R²   (0.991 R² .. 0.997 R²)
+  mean                 2.459 ms   (2.426 ms .. 2.492 ms)
+  std dev              114.5 μs   (95.32 μs .. 142.8 μs)
 
   benchmarking schnorr/verify_schnorr'
-  time                 1.429 ms   (1.381 ms .. 1.482 ms)
-                       0.993 R²   (0.987 R² .. 0.998 R²)
-  mean                 1.372 ms   (1.355 ms .. 1.396 ms)
-  std dev              67.72 μs   (50.44 μs .. 110.5 μs)
+  time                 1.283 ms   (1.263 ms .. 1.301 ms)
+                       0.999 R²   (0.998 R² .. 0.999 R²)
+  mean                 1.273 ms   (1.260 ms .. 1.284 ms)
+  std dev              41.56 μs   (31.12 μs .. 54.35 μs)
 
   benchmarking ecdsa/sign_ecdsa'
-  time                 233.7 μs   (230.3 μs .. 237.2 μs)
-                       0.997 R²   (0.996 R² .. 0.998 R²)
-  mean                 238.6 μs   (234.8 μs .. 243.3 μs)
-  std dev              14.85 μs   (12.27 μs .. 19.17 μs)
+  time                 222.6 μs   (219.9 μs .. 224.9 μs)
+                       0.999 R²   (0.999 R² .. 1.000 R²)
+  mean                 219.1 μs   (217.8 μs .. 220.5 μs)
+  std dev              4.523 μs   (3.525 μs .. 6.158 μs)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 1.460 ms   (1.418 ms .. 1.497 ms)
-                       0.994 R²   (0.989 R² .. 0.997 R²)
-  mean                 1.419 ms   (1.398 ms .. 1.446 ms)
-  std dev              80.76 μs   (66.73 μs .. 104.9 μs)
+  time                 1.267 ms   (1.260 ms .. 1.276 ms)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 1.278 ms   (1.273 ms .. 1.286 ms)
+  std dev              21.32 μs   (15.43 μs .. 30.82 μs)
 ```
 
 In terms of allocations, we get:
@@ -102,6 +103,12 @@ ecdsa
   Case                 Allocated  GCs
   sign_ecdsa'            324,672    0
   verify_ecdsa'        3,796,328    0
+
+ecdh
+
+  Case          Allocated  GCs
+  ecdh (small)  2,141,736    0
+  ecdh (large)  2,145,464    0
 ```
 
 ## Security
@@ -120,41 +127,53 @@ so as to execute *algorithmically* in time constant with respect to
 secret data, and evidence from benchmarks supports this:
 
 ```
-  benchmarking derive_public/sk = 2
-  time                 1.703 ms   (1.680 ms .. 1.728 ms)
+  benchmarking derive_pub/sk = 2
+  time                 1.513 ms   (1.468 ms .. 1.565 ms)
+                       0.994 R²   (0.991 R² .. 0.997 R²)
+  mean                 1.579 ms   (1.557 ms .. 1.600 ms)
+  std dev              74.25 μs   (60.33 μs .. 93.80 μs)
+
+  benchmarking derive_pub/sk = 2 ^ 255 - 19
+  time                 1.571 ms   (1.530 ms .. 1.599 ms)
+                       0.997 R²   (0.995 R² .. 0.998 R²)
+  mean                 1.574 ms   (1.553 ms .. 1.589 ms)
+  std dev              57.72 μs   (45.29 μs .. 71.48 μs)
+
+  benchmarking schnorr/sign_schnorr' (small)
+  time                 2.436 ms   (2.357 ms .. 2.516 ms)
+                       0.995 R²   (0.994 R² .. 0.998 R²)
+  mean                 2.563 ms   (2.532 ms .. 2.588 ms)
+  std dev              95.87 μs   (71.98 μs .. 127.2 μs)
+
+  benchmarking schnorr/sign_schnorr' (large)
+  time                 2.470 ms   (2.372 ms .. 2.543 ms)
+                       0.993 R²   (0.989 R² .. 0.997 R²)
+  mean                 2.407 ms   (2.374 ms .. 2.443 ms)
+  std dev              123.7 μs   (110.7 μs .. 144.9 μs)
+
+  benchmarking ecdsa/sign_ecdsa' (small)
+  time                 206.9 μs   (202.7 μs .. 211.8 μs)
+                       0.997 R²   (0.996 R² .. 0.999 R²)
+  mean                 213.8 μs   (211.5 μs .. 215.9 μs)
+  std dev              7.476 μs   (5.572 μs .. 9.698 μs)
+
+  benchmarking ecdsa/sign_ecdsa' (large)
+  time                 216.7 μs   (211.6 μs .. 221.7 μs)
                        0.997 R²   (0.995 R² .. 0.999 R²)
-  mean                 1.704 ms   (1.684 ms .. 1.730 ms)
-  std dev              81.99 μs   (67.86 μs .. 98.34 μs)
+  mean                 221.8 μs   (219.5 μs .. 224.1 μs)
+  std dev              7.673 μs   (6.124 μs .. 10.69 μs)
 
-  benchmarking derive_public/sk = 2 ^ 255 - 19
-  time                 1.686 ms   (1.654 ms .. 1.730 ms)
-                       0.998 R²   (0.997 R² .. 0.999 R²)
-  mean                 1.658 ms   (1.645 ms .. 1.673 ms)
-  std dev              44.75 μs   (34.84 μs .. 59.81 μs)
+  benchmarking ecdh/ecdh (small)
+  time                 1.623 ms   (1.605 ms .. 1.639 ms)
+                       0.999 R²   (0.998 R² .. 1.000 R²)
+  mean                 1.617 ms   (1.603 ms .. 1.624 ms)
+  std dev              32.52 μs   (20.66 μs .. 55.97 μs)
 
-  benchmarking schnorr/sign_schnorr (small secret)
-  time                 5.388 ms   (5.345 ms .. 5.438 ms)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 5.429 ms   (5.410 ms .. 5.449 ms)
-  std dev              58.14 μs   (48.93 μs .. 68.69 μs)
-
-  benchmarking schnorr/sign_schnorr (large secret)
-  time                 5.364 ms   (5.324 ms .. 5.410 ms)
-                       0.999 R²   (0.999 R² .. 1.000 R²)
-  mean                 5.443 ms   (5.414 ms .. 5.486 ms)
-  std dev              102.1 μs   (74.16 μs .. 146.4 μs)
-
-  benchmarking ecdsa/sign_ecdsa (small secret)
-  time                 1.740 ms   (1.726 ms .. 1.753 ms)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 1.752 ms   (1.744 ms .. 1.761 ms)
-  std dev              32.33 μs   (26.12 μs .. 43.34 μs)
-
-  benchmarking ecdsa/sign_ecdsa (large secret)
-  time                 1.748 ms   (1.731 ms .. 1.766 ms)
-                       0.999 R²   (0.998 R² .. 0.999 R²)
-  mean                 1.756 ms   (1.743 ms .. 1.771 ms)
-  std dev              48.99 μs   (40.83 μs .. 62.77 μs)
+  benchmarking ecdh/ecdh (large)
+  time                 1.623 ms   (1.580 ms .. 1.661 ms)
+                       0.996 R²   (0.992 R² .. 0.998 R²)
+  mean                 1.625 ms   (1.606 ms .. 1.641 ms)
+  std dev              58.38 μs   (44.31 μs .. 78.23 μs)
 ```
 
 Due to the use of arbitrary-precision integers, integer division modulo
