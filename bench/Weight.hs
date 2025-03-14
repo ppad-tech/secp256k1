@@ -33,6 +33,7 @@ main = W.mainWith $ do
   derive_pub
   schnorr
   ecdsa
+  ecdh
 
 remQ :: W.Weigh ()
 remQ = W.wgroup "remQ" $ do
@@ -96,6 +97,15 @@ ecdsa = W.wgroup "ecdsa" $ do
     pub = S.derive_pub big
     msg = "i approve of this message"
     sig = S.sign_ecdsa big s_msg
+
+ecdh :: W.Weigh ()
+ecdh = W.wgroup "ecdh" $ do
+    W.func "ecdh (small)" (S.ecdh pub) 2
+    W.func "ecdh (large)" (S.ecdh pub) b
+  where
+    b = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
+    Just pub = S.parse_point . B16.decodeLenient $
+      "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
 
 s_sk :: Integer
 s_sk = S.parse_int256 . B16.decodeLenient $
