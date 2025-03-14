@@ -33,15 +33,13 @@ execute_group EcdhTestGroup {..} =
 
 execute :: EcdhTest -> TestTree
 execute EcdhTest {..} = H.testCase report $ do
-    let pub = case der_to_pub t_public of
-          Left _ -> error "der_to_pub failed"
-          Right p -> p
-        sec = parse_bigint t_private
-        sar = parse_bigint t_shared
-
-        Affine x_out _ = affine (mul_unsafe pub sec) -- faster
-
-    H.assertEqual mempty sar x_out
+    case der_to_pub t_public of
+      Left _ -> H.assertBool "invalid" (t_result == "invalid")
+      Right pub -> do
+        let sec = parse_bigint t_private
+            sar = parse_bigint t_shared
+            Affine x_out _ = affine (mul_unsafe pub sec) -- faster
+        H.assertEqual mempty sar x_out
   where
     report = "wycheproof ecdh " <> show t_tcId
 
