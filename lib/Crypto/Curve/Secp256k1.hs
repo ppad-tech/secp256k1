@@ -258,9 +258,9 @@ valid p = case affine p of
 -- curve parameters -----------------------------------------------------------
 -- see https://www.secg.org/sec2-v2.pdf for parameter specs
 
+-- ~ 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
+
 -- | secp256k1 field prime.
---
---   = 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
 _CURVE_P :: Integer
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
