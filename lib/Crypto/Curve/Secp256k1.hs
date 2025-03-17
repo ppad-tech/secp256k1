@@ -288,10 +288,10 @@ _CURVE_A = 0
 _CURVE_B :: Integer
 _CURVE_B = 7
 
--- | secp256k1 generator point.
---
--- = parse_point
+-- ~ parse_point . B16.decode $
 --     "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
+
+-- | secp256k1 generator point.
 _CURVE_G :: Projective
 _CURVE_G = Projective x y 1 where
   x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
