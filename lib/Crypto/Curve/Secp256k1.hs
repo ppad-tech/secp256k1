@@ -297,11 +297,11 @@ _CURVE_G = Projective x y 1 where
   x = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
   y = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
 
--- | secp256k1 zero point / point at infinity / monoidal identity.
+-- | secp256k1 zero point, point at infinity, or monoidal identity.
 _CURVE_ZERO :: Projective
 _CURVE_ZERO = Projective 0 1 0
 
--- secp256k1 zero point / point at infinity / monoidal identity
+-- secp256k1 zero point, point at infinity, or monoidal identity
 _ZERO :: Projective
 _ZERO = Projective 0 1 0
 {-# DEPRECATED _ZERO "use _CURVE_ZERO instead" #-}
