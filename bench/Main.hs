@@ -28,6 +28,11 @@ main = defaultMain [
   , ecdh
   ]
 
+parse_int256 :: BS.ByteString -> Integer
+parse_int256 bs = case S.parse_int256 bs of
+  Nothing -> error "bang"
+  Just s -> s
+
 remQ :: Benchmark
 remQ = env setup $ \x ->
     bgroup "remQ (remainder modulo _CURVE_Q)" [
@@ -35,7 +40,7 @@ remQ = env setup $ \x ->
     , bench "remQ (2 ^ 255 - 19)" $ nf S.remQ x
     ]
   where
-    setup = pure . S.parse_int256 $ B16.decodeLenient
+    setup = pure . parse_int256 $ B16.decodeLenient
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 parse_point :: Benchmark
@@ -48,8 +53,8 @@ parse_point = bgroup "parse_point" [
 parse_integer :: Benchmark
 parse_integer = env setup $ \ ~(small, big) ->
     bgroup "parse_int256" [
-      bench "parse_int256 (small)" $ nf S.parse_int256 small
-    , bench "parse_int256 (big)" $ nf S.parse_int256 big
+      bench "parse_int256 (small)" $ nf parse_int256 small
+    , bench "parse_int256 (big)" $ nf parse_int256 big
     ]
   where
     setup = do
@@ -73,7 +78,7 @@ mul = env setup $ \x ->
     , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
     ]
   where
-    setup = pure . S.parse_int256 $ B16.decodeLenient
+    setup = pure . parse_int256 $ B16.decodeLenient
       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 precompute :: Benchmark
@@ -88,7 +93,7 @@ mul_wnaf = env setup $ \ ~(tex, x) ->
   where
     setup = do
       let !tex = S.precompute
-          !int = S.parse_int256 $ B16.decodeLenient
+          !int = parse_int256 $ B16.decodeLenient
             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
       pure (tex, int)
 
@@ -103,7 +108,7 @@ derive_pub = env setup $ \ ~(tex, x) ->
   where
     setup = do
       let !tex = S.precompute
-          !int = S.parse_int256 $ B16.decodeLenient
+          !int = parse_int256 $ B16.decodeLenient
             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
       pure (tex, int)
 
@@ -120,7 +125,7 @@ schnorr = env setup $ \ ~(tex, big) ->
   where
     setup = do
       let !tex = S.precompute
-          !int = S.parse_int256 $ B16.decodeLenient
+          !int = parse_int256 $ B16.decodeLenient
             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
       pure (tex, int)
 
@@ -137,7 +142,7 @@ ecdsa = env setup $ \ ~(tex, big, pub, msg, sig) ->
   where
     setup = do
       let !tex = S.precompute
-          big = S.parse_int256 $ B16.decodeLenient
+          big = parse_int256 $ B16.decodeLenient
             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
           Just pub = S.derive_pub big
           msg = "i approve of this message"
@@ -203,7 +208,7 @@ t = case S.parse_point t_bs of
   Just !pt -> pt
 
 s_sk :: Integer
-s_sk = S.parse_int256 . B16.decodeLenient $
+s_sk = parse_int256 . B16.decodeLenient $
   "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
 
 s_sig :: BS.ByteString

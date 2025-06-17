@@ -15,6 +15,11 @@ instance NFData S.Affine
 instance NFData S.ECDSA
 instance NFData S.Context
 
+parse_int :: BS.ByteString -> Integer
+parse_int bs = case S.parse_int256 bs of
+  Nothing -> error "bang"
+  Just v -> v
+
 big :: Integer
 big = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
 
@@ -42,8 +47,8 @@ remQ = W.wgroup "remQ" $ do
 
 parse_int256 :: W.Weigh ()
 parse_int256 = W.wgroup "parse_int256" $ do
-  W.func' "parse_int256 (small)" S.parse_int256 (BS.replicate 32 0x00)
-  W.func' "parse_int256 (big)" S.parse_int256 (BS.replicate 32 0xFF)
+  W.func' "parse_int (small)" parse_int (BS.replicate 32 0x00)
+  W.func' "parse_int (big)" parse_int (BS.replicate 32 0xFF)
 
 add :: W.Weigh ()
 add = W.wgroup " add" $ do
@@ -108,7 +113,7 @@ ecdh = W.wgroup "ecdh" $ do
       "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
 
 s_sk :: Integer
-s_sk = S.parse_int256 . B16.decodeLenient $
+s_sk = parse_int . B16.decodeLenient $
   "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
 
 s_sig :: BS.ByteString

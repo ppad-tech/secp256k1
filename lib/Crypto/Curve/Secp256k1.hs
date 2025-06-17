@@ -703,11 +703,10 @@ derive_pub' = mul_wnaf
 --   >>> import qualified Data.ByteString as BS
 --   >>> parse_int256 (BS.replicate 32 0xFF)
 --   <2^256 - 1>
-parse_int256 :: BS.ByteString -> Integer
-parse_int256 bs
-  | BS.length bs /= 32 =
-      error "ppad-secp256k1 (parse_int256): requires exactly 32-byte input"
-  | otherwise = roll32 bs
+parse_int256 :: BS.ByteString -> Maybe Integer
+parse_int256 bs = do
+  guard (BS.length bs == 32)
+  pure $! roll32 bs
 
 -- | Parse compressed secp256k1 point (33 bytes), uncompressed point (65
 --   bytes), or BIP0340-style point (32 bytes).
