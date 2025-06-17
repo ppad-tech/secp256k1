@@ -636,8 +636,9 @@ _precompute ctxW = Context {..} where
 -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
 -- secp256k1 points.
 mul_wnaf :: Context -> Integer -> Projective
-mul_wnaf Context {..} _SECRET =
-    loop 0 _CURVE_ZERO _CURVE_G _SECRET
+mul_wnaf Context {..} _SECRET
+    | not (ge _SECRET) = error "ppad-secp256k1 (mul_wnaf): invalid scalar"
+    | otherwise = loop 0 _CURVE_ZERO _CURVE_G _SECRET
   where
     wins = 256 `quot` ctxW + 1
     wsize = 2 ^ (ctxW - 1)
