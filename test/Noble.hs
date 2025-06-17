@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -40,8 +41,8 @@ execute_valid tex (label, ValidTest {..}) =
     let msg = vt_m
         x   = vt_d
         pec = parse_compact vt_signature
-        sig = _sign_ecdsa_no_hash x msg
-        sig' = _sign_ecdsa_no_hash' tex x msg
+        Just sig = _sign_ecdsa_no_hash x msg
+        Just sig' = _sign_ecdsa_no_hash' tex x msg
     assertEqual mempty sig sig'
     assertEqual mempty pec sig
 

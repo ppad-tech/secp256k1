@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -56,8 +57,8 @@ execute tex Case {..} = testCase ("bip0340 " <> show c_index) $
       -- XX test pubkey derivation from sk
       else do -- signature present; test sig too
         let sk = roll c_sk
-            sig  = sign_schnorr sk c_msg c_aux
-            sig' = sign_schnorr' tex sk c_msg c_aux
+            Just sig  = sign_schnorr sk c_msg c_aux
+            Just sig' = sign_schnorr' tex sk c_msg c_aux
             ver  = verify_schnorr c_msg pk sig
             ver' = verify_schnorr' tex c_msg pk sig
         assertEqual mempty c_sig sig

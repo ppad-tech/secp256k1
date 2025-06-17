@@ -94,9 +94,9 @@ ecdsa = W.wgroup "ecdsa" $ do
     W.func "verify_ecdsa" (S.verify_ecdsa msg pub) sig
     W.func "verify_ecdsa'" (S.verify_ecdsa' tex msg pub) sig
   where
-    pub = S.derive_pub big
+    Just pub = S.derive_pub big
     msg = "i approve of this message"
-    sig = S.sign_ecdsa big s_msg
+    Just sig = S.sign_ecdsa big s_msg
 
 ecdh :: W.Weigh ()
 ecdh = W.wgroup "ecdh" $ do

@@ -139,9 +139,9 @@ ecdsa = env setup $ \ ~(tex, big, pub, msg, sig) ->
       let !tex = S.precompute
           big = S.parse_int256 $ B16.decodeLenient
             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
-          pub = S.derive_pub big
+          Just pub = S.derive_pub big
           msg = "i approve of this message"
-          sig = S.sign_ecdsa big s_msg
+          Just sig = S.sign_ecdsa big s_msg
       pure (tex, big, pub, msg, sig)
 
 ecdh :: Benchmark

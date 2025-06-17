@@ -44,7 +44,7 @@ execute EcdhTest {..} = H.testCase report $ do
       Right pub -> do
         let sec   = parse_bigint t_private
             sar   = parse_bigint t_shared
-            h_sar = SHA256.hash (unroll32 sar)
+            h_sar = Just (SHA256.hash (unroll32 sar))
             out   = ecdh pub sec
         H.assertEqual mempty h_sar out
   where
