@@ -798,7 +798,7 @@ serialize_point (affine -> Affine x y) = BS.cons b (unroll32 x) where
 --   >>> import qualified System.Entropy as E
 --   >>> aux <- E.getEntropy 32
 --   >>> sign_schnorr sec msg aux
---   "<64-byte schnorr signature>"
+--   Just "<64-byte schnorr signature>"
 sign_schnorr
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -816,7 +816,7 @@ sign_schnorr = _sign_schnorr (mul _CURVE_G)
 --   >>> aux <- E.getEntropy 32
 --   >>> let !tex = precompute
 --   >>> sign_schnorr' tex sec msg aux
---   "<64-byte schnorr signature>"
+--   Just "<64-byte schnorr signature>"
 sign_schnorr'
   :: Context        -- ^ secp256k1 context
   -> Integer        -- ^ secret key
@@ -1001,7 +1001,7 @@ data HashFlag =
 --   signature, use 'sign_ecdsa_unrestricted'.
 --
 --   >>> sign_ecdsa sec msg
---   "<ecdsa signature>"
+--   Just "<ecdsa signature>"
 sign_ecdsa
   :: Integer         -- ^ secret key
   -> BS.ByteString   -- ^ message
@@ -1016,7 +1016,7 @@ sign_ecdsa = _sign_ecdsa (mul _CURVE_G) LowS Hash
 --
 --   >>> let !tex = precompute
 --   >>> sign_ecdsa' tex sec msg
---   "<ecdsa signature>"
+--   Just "<ecdsa signature>"
 sign_ecdsa'
   :: Context         -- ^ secp256k1 context
   -> Integer         -- ^ secret key
@@ -1033,7 +1033,7 @@ sign_ecdsa' tex = _sign_ecdsa (mul_wnaf tex) LowS Hash
 --   "low-s" signature, use 'sign_ecdsa'.
 --
 --   >>> sign_ecdsa_unrestricted sec msg
---   "<ecdsa signature>"
+--   Just "<ecdsa signature>"
 sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
@@ -1048,7 +1048,7 @@ sign_ecdsa_unrestricted = _sign_ecdsa (mul _CURVE_G) Unrestricted Hash
 --
 --   >>> let !tex = precompute
 --   >>> sign_ecdsa_unrestricted' tex sec msg
---   "<ecdsa signature>"
+--   Just "<ecdsa signature>"
 sign_ecdsa_unrestricted'
   :: Context        -- ^ secp256k1 context
   -> Integer        -- ^ secret key
@@ -1241,8 +1241,8 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s) = M.isJust $ do
 --
 --   >>> let sec_alice = 0x03                   -- contrived
 --   >>> let sec_bob   = 2 ^ 128 - 1            -- contrived
---   >>> let pub_alice = derive_pub sec_alice
---   >>> let pub_bob   = derive_pub sec_bob
+--   >>> let Just pub_alice = derive_pub sec_alice
+--   >>> let Just pub_bob   = derive_pub sec_bob
 --   >>> let secret_as_computed_by_alice = ecdh pub_bob sec_alice
 --   >>> let secret_as_computed_by_bob   = ecdh pub_alice sec_bob
 --   >>> secret_as_computed_by_alice == secret_as_computed_by_bob
