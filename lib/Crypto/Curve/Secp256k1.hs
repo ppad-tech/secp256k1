@@ -587,44 +587,6 @@ mul_unsafe p n
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
 
--- -- Timing-safe scalar multiplication of secp256k1 points.
--- mul :: Projective -> Integer -> Projective
--- mul p _SECRET
---     | not (ge _SECRET) = error "ppad-secp256k1 (mul): scalar not in group"
---     | otherwise  = loop (0 :: Int) _CURVE_ZERO _CURVE_G p _SECRET
---   where
---     loop !j !acc !f !d !m
---       | j == _CURVE_Q_BITS = acc
---       | otherwise =
---           let nd = double d
---               nm = I.integerShiftR m 1
---           in  if   I.integerTestBit m 0
---               then loop (succ j) (add acc d) f nd nm
---               else loop (succ j) acc (add f d) nd nm
--- {-# INLINE mul #-}
-
--- -- Timing-unsafe scalar multiplication of secp256k1 points.
--- --
--- -- Don't use this function if the scalar could potentially be a secret.
--- mul_unsafe :: Projective -> Integer -> Projective
--- mul_unsafe p n
---     | n == 0 = _CURVE_ZERO
---     | not (ge n) =
---         error "ppad-secp256k1 (mul_unsafe): scalar not in group"
---     | otherwise  = loop _CURVE_ZERO p n
---   where
---     loop !r !d m
---       | m <= 0 = r
---       | otherwise =
---           let nd = double d
---               nm = I.integerShiftR m 1
---               nr = if I.integerTestBit m 0 then add r d else r
---           in  loop nr nd nm
-
-
-
-
-
 -- | Precomputed multiples of the secp256k1 base or generator point.
 data Context = Context {
     ctxW     :: {-# UNPACK #-} !Int
@@ -670,45 +632,6 @@ _precompute ctxW = Context {..} where
     | otherwise =
         let nb = add b p
         in  loop_j p (nb : acc) nb (succ j)
-
--- -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
--- -- secp256k1 points.
--- mul_wnaf :: Context -> Integer -> Projective
--- mul_wnaf Context {..} _SECRET
---     | not (ge _SECRET) = error "ppad-secp256k1 (mul_wnaf): invalid scalar"
---     | otherwise = loop 0 _CURVE_ZERO _CURVE_G _SECRET
---   where
---     wins = 256 `quot` ctxW + 1
---     wsize = 2 ^ (ctxW - 1)
---     mask = 2 ^ ctxW - 1
---     mnum = 2 ^ ctxW
---
---     loop !w !acc !f !n
---       | w == wins = acc
---       | otherwise =
---           let !off0 = w * fi wsize
---
---               !b0 = n `I.integerAnd` mask
---               !n0 = n `I.integerShiftR` fi ctxW
---
---               !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
---                             | otherwise  = Pair b0 n0
---
---               !c0 = B.testBit w 0
---               !c1 = b1 < 0
---
---               !off1 = off0 + fi (abs b1) - 1
---
---           in  if   b1 == 0
---               then let !pr = A.indexArray ctxArray off0
---                        !pt | c0 = neg pr
---                            | otherwise = pr
---                    in  loop (w + 1) acc (add f pt) n1
---               else let !pr = A.indexArray ctxArray off1
---                        !pt | c1 = neg pr
---                            | otherwise = pr
---                    in  loop (w + 1) (add acc pt) f n1
--- {-# INLINE mul_wnaf #-}
 
 -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
 -- secp256k1 points.
@@ -987,7 +910,7 @@ _verify_schnorr _mul m (affine -> Affine x_p _) sig
   | otherwise = M.isJust $ do
       capP@(Affine x_P _) <- lift x_p
       let (roll32 -> r, roll32 -> s) = BS.splitAt 32 sig
-      guard (not (r >= _CURVE_P || s >= _CURVE_Q))
+      guard (r < _CURVE_P && s < _CURVE_Q)
       let e = modQ . roll32 $ hash_challenge
                 (unroll32 r <> unroll32 x_P <> m)
       pt0 <- _mul s
