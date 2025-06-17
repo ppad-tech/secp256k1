@@ -120,7 +120,7 @@ fi = fromIntegral
 modexp :: Integer -> Natural -> Natural -> Integer
 modexp b (fi -> e) m = case I.integerPowMod# b e m of
   (# fi -> n | #) -> n
-  (# | _ #) -> error "negative power impossible"
+  (# | _ #) -> error "ppad-secp256k1 (modexp): internal error"
 {-# INLINE modexp #-}
 
 -- generic modular inverse
@@ -239,7 +239,7 @@ affine p@(Projective x y z)
   | p == _CURVE_ZERO = Affine 0 0
   | z == 1     = Affine x y
   | otherwise  = case modinv z (fi _CURVE_P) of
-      Nothing -> error "ppad-secp256k1 (affine): impossible point"
+      Nothing -> error "ppad-secp256k1 (affine): internal error"
       Just iz -> Affine (modP (x * iz)) (modP (y * iz))
 
 -- Convert to projective coordinates.
@@ -460,7 +460,7 @@ add_proj (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
 -- algo 8, renes et al, 2015
 add_mixed :: Projective -> Projective -> Projective
 add_mixed (Projective x1 y1 z1) (Projective x2 y2 z2)
-  | z2 /= 1   = error "ppad-secp256k1: internal error"
+  | z2 /= 1   = error "ppad-secp256k1 (add_mixed): internal error"
   | otherwise = runST $ do
       x3 <- newSTRef 0
       y3 <- newSTRef 0
