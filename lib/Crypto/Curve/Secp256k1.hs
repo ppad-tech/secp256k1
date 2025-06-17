@@ -96,6 +96,7 @@ import Data.Bits ((.|.))
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BU
+import qualified Data.Maybe as M (isJust)
 import qualified Data.Primitive.Array as A
 import Data.STRef
 import Data.Word (Word8, Word64)
@@ -554,43 +555,10 @@ double (Projective x y z) = runST $ do
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
 -- Timing-safe scalar multiplication of secp256k1 points.
-mul' :: Projective -> Integer -> Maybe Projective
-mul' p _SECRET = do
+mul :: Projective -> Integer -> Maybe Projective
+mul p _SECRET = do
     guard (ge _SECRET)
     pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p _SECRET
-  where
-    loop !j !acc !f !d !m
-      | j == _CURVE_Q_BITS = acc
-      | otherwise =
-          let nd = double d
-              nm = I.integerShiftR m 1
-          in  if   I.integerTestBit m 0
-              then loop (succ j) (add acc d) f nd nm
-              else loop (succ j) acc (add f d) nd nm
-{-# INLINE mul' #-}
-
--- Timing-unsafe scalar multiplication of secp256k1 points.
---
--- Don't use this function if the scalar could potentially be a secret.
-mul_unsafe' :: Projective -> Integer -> Maybe Projective
-mul_unsafe' p n
-    | n == 0 = pure $! _CURVE_ZERO
-    | not (ge n) = Nothing
-    | otherwise  = pure $! loop _CURVE_ZERO p n
-  where
-    loop !r !d m
-      | m <= 0 = r
-      | otherwise =
-          let nd = double d
-              nm = I.integerShiftR m 1
-              nr = if I.integerTestBit m 0 then add r d else r
-          in  loop nr nd nm
-
--- Timing-safe scalar multiplication of secp256k1 points.
-mul :: Projective -> Integer -> Projective
-mul p _SECRET
-    | not (ge _SECRET) = error "ppad-secp256k1 (mul): scalar not in group"
-    | otherwise  = loop (0 :: Int) _CURVE_ZERO _CURVE_G p _SECRET
   where
     loop !j !acc !f !d !m
       | j == _CURVE_Q_BITS = acc
@@ -605,12 +573,11 @@ mul p _SECRET
 -- Timing-unsafe scalar multiplication of secp256k1 points.
 --
 -- Don't use this function if the scalar could potentially be a secret.
-mul_unsafe :: Projective -> Integer -> Projective
+mul_unsafe :: Projective -> Integer -> Maybe Projective
 mul_unsafe p n
-    | n == 0 = _CURVE_ZERO
-    | not (ge n) =
-        error "ppad-secp256k1 (mul_unsafe): scalar not in group"
-    | otherwise  = loop _CURVE_ZERO p n
+    | n == 0 = pure $! _CURVE_ZERO
+    | not (ge n) = Nothing
+    | otherwise  = pure $! loop _CURVE_ZERO p n
   where
     loop !r !d m
       | m <= 0 = r
@@ -619,6 +586,40 @@ mul_unsafe p n
               nm = I.integerShiftR m 1
               nr = if I.integerTestBit m 0 then add r d else r
           in  loop nr nd nm
+
+-- -- Timing-safe scalar multiplication of secp256k1 points.
+-- mul :: Projective -> Integer -> Projective
+-- mul p _SECRET
+--     | not (ge _SECRET) = error "ppad-secp256k1 (mul): scalar not in group"
+--     | otherwise  = loop (0 :: Int) _CURVE_ZERO _CURVE_G p _SECRET
+--   where
+--     loop !j !acc !f !d !m
+--       | j == _CURVE_Q_BITS = acc
+--       | otherwise =
+--           let nd = double d
+--               nm = I.integerShiftR m 1
+--           in  if   I.integerTestBit m 0
+--               then loop (succ j) (add acc d) f nd nm
+--               else loop (succ j) acc (add f d) nd nm
+-- {-# INLINE mul #-}
+
+-- -- Timing-unsafe scalar multiplication of secp256k1 points.
+-- --
+-- -- Don't use this function if the scalar could potentially be a secret.
+-- mul_unsafe :: Projective -> Integer -> Projective
+-- mul_unsafe p n
+--     | n == 0 = _CURVE_ZERO
+--     | not (ge n) =
+--         error "ppad-secp256k1 (mul_unsafe): scalar not in group"
+--     | otherwise  = loop _CURVE_ZERO p n
+--   where
+--     loop !r !d m
+--       | m <= 0 = r
+--       | otherwise =
+--           let nd = double d
+--               nm = I.integerShiftR m 1
+--               nr = if I.integerTestBit m 0 then add r d else r
+--           in  loop nr nd nm
 
 
 
@@ -670,49 +671,49 @@ _precompute ctxW = Context {..} where
         let nb = add b p
         in  loop_j p (nb : acc) nb (succ j)
 
+-- -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
+-- -- secp256k1 points.
+-- mul_wnaf :: Context -> Integer -> Projective
+-- mul_wnaf Context {..} _SECRET
+--     | not (ge _SECRET) = error "ppad-secp256k1 (mul_wnaf): invalid scalar"
+--     | otherwise = loop 0 _CURVE_ZERO _CURVE_G _SECRET
+--   where
+--     wins = 256 `quot` ctxW + 1
+--     wsize = 2 ^ (ctxW - 1)
+--     mask = 2 ^ ctxW - 1
+--     mnum = 2 ^ ctxW
+--
+--     loop !w !acc !f !n
+--       | w == wins = acc
+--       | otherwise =
+--           let !off0 = w * fi wsize
+--
+--               !b0 = n `I.integerAnd` mask
+--               !n0 = n `I.integerShiftR` fi ctxW
+--
+--               !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
+--                             | otherwise  = Pair b0 n0
+--
+--               !c0 = B.testBit w 0
+--               !c1 = b1 < 0
+--
+--               !off1 = off0 + fi (abs b1) - 1
+--
+--           in  if   b1 == 0
+--               then let !pr = A.indexArray ctxArray off0
+--                        !pt | c0 = neg pr
+--                            | otherwise = pr
+--                    in  loop (w + 1) acc (add f pt) n1
+--               else let !pr = A.indexArray ctxArray off1
+--                        !pt | c1 = neg pr
+--                            | otherwise = pr
+--                    in  loop (w + 1) (add acc pt) f n1
+-- {-# INLINE mul_wnaf #-}
+
 -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
 -- secp256k1 points.
-mul_wnaf :: Context -> Integer -> Projective
-mul_wnaf Context {..} _SECRET
-    | not (ge _SECRET) = error "ppad-secp256k1 (mul_wnaf): invalid scalar"
-    | otherwise = loop 0 _CURVE_ZERO _CURVE_G _SECRET
-  where
-    wins = 256 `quot` ctxW + 1
-    wsize = 2 ^ (ctxW - 1)
-    mask = 2 ^ ctxW - 1
-    mnum = 2 ^ ctxW
-
-    loop !w !acc !f !n
-      | w == wins = acc
-      | otherwise =
-          let !off0 = w * fi wsize
-
-              !b0 = n `I.integerAnd` mask
-              !n0 = n `I.integerShiftR` fi ctxW
-
-              !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
-                            | otherwise  = Pair b0 n0
-
-              !c0 = B.testBit w 0
-              !c1 = b1 < 0
-
-              !off1 = off0 + fi (abs b1) - 1
-
-          in  if   b1 == 0
-              then let !pr = A.indexArray ctxArray off0
-                       !pt | c0 = neg pr
-                           | otherwise = pr
-                   in  loop (w + 1) acc (add f pt) n1
-              else let !pr = A.indexArray ctxArray off1
-                       !pt | c1 = neg pr
-                           | otherwise = pr
-                   in  loop (w + 1) (add acc pt) f n1
-{-# INLINE mul_wnaf #-}
-
--- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
--- secp256k1 points.
-mul_wnaf' :: Context -> Integer -> Maybe Projective
-mul_wnaf' Context {..} _SECRET = do
+mul_wnaf :: Context -> Integer -> Maybe Projective
+mul_wnaf Context {..} _SECRET = do
     guard (ge _SECRET)
     pure $! loop 0 _CURVE_ZERO _CURVE_G _SECRET
   where
@@ -746,7 +747,7 @@ mul_wnaf' Context {..} _SECRET = do
                        !pt | c1 = neg pr
                            | otherwise = pr
                    in  loop (w + 1) (add acc pt) f n1
-{-# INLINE mul_wnaf' #-}
+{-# INLINE mul_wnaf #-}
 
 -- | Derive a public key (i.e., a secp256k1 point) from the provided
 --   secret.
@@ -755,12 +756,8 @@ mul_wnaf' Context {..} _SECRET = do
 --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
 --   >>> derive_pub sk
 --   "<secp256k1 point>"
-derive_pub :: Integer -> Pub
-derive_pub _SECRET
-  | not (ge _SECRET) =
-      error "ppad-secp256k1 (derive_pub): invalid secret key"
-  | otherwise =
-      mul _CURVE_G _SECRET
+derive_pub :: Integer -> Maybe Pub
+derive_pub = mul _CURVE_G
 {-# NOINLINE derive_pub #-}
 
 -- | The same as 'derive_pub', except uses a 'Context' to optimise
@@ -771,12 +768,8 @@ derive_pub _SECRET
 --   >>> let !tex = precompute
 --   >>> derive_pub' tex sk
 --   "<secp256k1 point>"
-derive_pub' :: Context -> Integer -> Pub
-derive_pub' tex _SECRET
-  | not (ge _SECRET) =
-      error "ppad-secp256k1 (derive_pub): invalid secret key"
-  | otherwise =
-      mul_wnaf tex _SECRET
+derive_pub' :: Context -> Integer -> Maybe Pub
+derive_pub' = mul_wnaf
 {-# NOINLINE derive_pub' #-}
 
 -- parsing --------------------------------------------------------------------
@@ -887,7 +880,7 @@ sign_schnorr
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
-  -> BS.ByteString  -- ^ 64-byte Schnorr signature
+  -> Maybe BS.ByteString  -- ^ 64-byte Schnorr signature
 sign_schnorr = _sign_schnorr (mul _CURVE_G)
 
 -- | The same as 'sign_schnorr', except uses a 'Context' to optimise
@@ -906,50 +899,48 @@ sign_schnorr'
   -> Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
-  -> BS.ByteString  -- ^ 64-byte Schnorr signature
+  -> Maybe BS.ByteString  -- ^ 64-byte Schnorr signature
 sign_schnorr' tex = _sign_schnorr (mul_wnaf tex)
 
 _sign_schnorr
-  :: (Integer -> Projective)  -- partially-applied multiplication function
+  :: (Integer -> Maybe Projective)  -- partially-applied multiplication function
   -> Integer                  -- secret key
   -> BS.ByteString            -- message
   -> BS.ByteString            -- 32 bytes of auxilliary random data
-  -> BS.ByteString
-_sign_schnorr _mul _SECRET m a
-  | not (ge _SECRET) = error "ppad-secp256k1 (sign_schnorr): invalid secret key"
-  | otherwise  =
-      let p_proj = _mul _SECRET
-          Affine x_p y_p = affine p_proj
-          d | I.integerTestBit y_p 0 = _CURVE_Q - _SECRET
-            | otherwise = _SECRET
+  -> Maybe BS.ByteString
+_sign_schnorr _mul _SECRET m a = do
+  p_proj <- _mul _SECRET
+  let Affine x_p y_p = affine p_proj
+      d | I.integerTestBit y_p 0 = _CURVE_Q - _SECRET
+        | otherwise = _SECRET
 
-          bytes_d = unroll32 d
-          h_a = hash_aux a
-          t = xor bytes_d h_a
+      bytes_d = unroll32 d
+      h_a = hash_aux a
+      t = xor bytes_d h_a
 
-          bytes_p = unroll32 x_p
-          rand = hash_nonce (t <> bytes_p <> m)
+      bytes_p = unroll32 x_p
+      rand = hash_nonce (t <> bytes_p <> m)
 
-          k' = modQ (roll32 rand)
+      k' = modQ (roll32 rand)
 
-      in  if   k' == 0 -- negligible probability
-          then error "ppad-secp256k1 (sign_schnorr): invalid k"
-          else
-            let Affine x_r y_r = affine (_mul k')
-                k | I.integerTestBit y_r 0 = _CURVE_Q - k'
-                  | otherwise = k'
+  if   k' == 0 -- negligible probability
+  then Nothing -- XX handle me
+  else do
+    pt <- _mul k'
+    let Affine x_r y_r = affine pt
+        k | I.integerTestBit y_r 0 = _CURVE_Q - k'
+          | otherwise = k'
 
-                bytes_r = unroll32 x_r
-                e = modQ . roll32 . hash_challenge
-                  $ bytes_r <> bytes_p <> m
+        bytes_r = unroll32 x_r
+        e = modQ . roll32 . hash_challenge
+          $ bytes_r <> bytes_p <> m
 
-                bytes_ked = unroll32 (modQ (k + e * d))
+        bytes_ked = unroll32 (modQ (k + e * d))
 
-                sig = bytes_r <> bytes_ked
+        sig = bytes_r <> bytes_ked
 
-            in  if   verify_schnorr m p_proj sig
-                then sig
-                else error "ppad-secp256k1 (sign_schnorr): invalid signature"
+    guard (verify_schnorr m p_proj sig)
+    pure $! sig
 {-# INLINE _sign_schnorr #-}
 
 -- | Verify a 64-byte Schnorr signature for the provided message with
@@ -986,27 +977,26 @@ verify_schnorr'
 verify_schnorr' tex = _verify_schnorr (mul_wnaf tex)
 
 _verify_schnorr
-  :: (Integer -> Projective) -- partially-applied multiplication function
+  :: (Integer -> Maybe Projective) -- partially-applied multiplication function
   -> BS.ByteString
   -> Pub
   -> BS.ByteString
   -> Bool
 _verify_schnorr _mul m (affine -> Affine x_p _) sig
   | BS.length sig /= 64 = False
-  | otherwise = case lift x_p of
-      Nothing -> False
-      Just capP@(Affine x_P _) ->
-        let (roll32 -> r, roll32 -> s) = BS.splitAt 32 sig
-        in  if   r >= _CURVE_P || s >= _CURVE_Q
-            then False
-            else let e = modQ . roll32 $ hash_challenge
-                           (unroll32 r <> unroll32 x_P <> m)
-                     dif = add (_mul s)
-                               (neg (mul_unsafe (projective capP) e))
-                 in  if   dif == _CURVE_ZERO
-                     then False
-                     else let Affine x_R y_R = affine dif
-                          in  not (I.integerTestBit y_R 0 || x_R /= r)
+  | otherwise = M.isJust $ do
+      capP@(Affine x_P _) <- lift x_p
+      let (roll32 -> r, roll32 -> s) = BS.splitAt 32 sig
+      guard (not (r >= _CURVE_P || s >= _CURVE_Q))
+      let e = modQ . roll32 $ hash_challenge
+                (unroll32 r <> unroll32 x_P <> m)
+      pt0 <- _mul s
+      pt1 <- mul_unsafe (projective capP) e
+      let dif = add pt0 (neg pt1)
+      guard (dif /= _CURVE_ZERO)
+      let Affine x_R y_R = affine dif
+      guard $ not (I.integerTestBit y_R 0 || x_R /= r)
+      pure ()
 {-# INLINE _verify_schnorr #-}
 
 -- hardcoded tag of BIP0340/aux
@@ -1092,7 +1082,7 @@ data HashFlag =
 sign_ecdsa
   :: Integer         -- ^ secret key
   -> BS.ByteString   -- ^ message
-  -> ECDSA
+  -> Maybe ECDSA
 sign_ecdsa = _sign_ecdsa (mul _CURVE_G) LowS Hash
 
 -- | The same as 'sign_ecdsa', except uses a 'Context' to optimise internal
@@ -1108,7 +1098,7 @@ sign_ecdsa'
   :: Context         -- ^ secp256k1 context
   -> Integer         -- ^ secret key
   -> BS.ByteString   -- ^ message
-  -> ECDSA
+  -> Maybe ECDSA
 sign_ecdsa' tex = _sign_ecdsa (mul_wnaf tex) LowS Hash
 
 -- | Produce an ECDSA signature for the provided message, using the
@@ -1124,7 +1114,7 @@ sign_ecdsa' tex = _sign_ecdsa (mul_wnaf tex) LowS Hash
 sign_ecdsa_unrestricted
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
-  -> ECDSA
+  -> Maybe ECDSA
 sign_ecdsa_unrestricted = _sign_ecdsa (mul _CURVE_G) Unrestricted Hash
 
 -- | The same as 'sign_ecdsa_unrestricted', except uses a 'Context' to
@@ -1140,7 +1130,7 @@ sign_ecdsa_unrestricted'
   :: Context        -- ^ secp256k1 context
   -> Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message
-  -> ECDSA
+  -> Maybe ECDSA
 sign_ecdsa_unrestricted' tex = _sign_ecdsa (mul_wnaf tex) Unrestricted Hash
 
 -- Produce a "low-s" ECDSA signature for the provided message, using
@@ -1152,52 +1142,54 @@ sign_ecdsa_unrestricted' tex = _sign_ecdsa (mul_wnaf tex) Unrestricted Hash
 _sign_ecdsa_no_hash
   :: Integer        -- ^ secret key
   -> BS.ByteString  -- ^ message digest
-  -> ECDSA
+  -> Maybe ECDSA
 _sign_ecdsa_no_hash = _sign_ecdsa (mul _CURVE_G) LowS NoHash
 
 _sign_ecdsa_no_hash'
   :: Context
   -> Integer
   -> BS.ByteString
-  -> ECDSA
+  -> Maybe ECDSA
 _sign_ecdsa_no_hash' tex = _sign_ecdsa (mul_wnaf tex) LowS NoHash
 
 _sign_ecdsa
-  :: (Integer -> Projective) -- partially-applied multiplication function
+  :: (Integer -> Maybe Projective) -- partially-applied multiplication function
   -> SigType
   -> HashFlag
   -> Integer
   -> BS.ByteString
-  -> ECDSA
-_sign_ecdsa _mul ty hf _SECRET m
-  | not (ge _SECRET) = error "ppad-secp256k1 (sign_ecdsa): invalid secret key"
-  | otherwise  = runST $ do
-      -- RFC6979 sec 3.3a
-      let entropy = int2octets _SECRET
-          nonce   = bits2octets h
-      drbg <- DRBG.new SHA256.hmac entropy nonce mempty
-      -- RFC6979 sec 2.4
-      sign_loop drbg
-    where
-      h = case hf of
-        Hash -> SHA256.hash m
-        NoHash -> m
+  -> Maybe ECDSA
+_sign_ecdsa _mul ty hf _SECRET m = runST $ do
+    -- RFC6979 sec 3.3a
+    let entropy = int2octets _SECRET
+        nonce   = bits2octets h
+    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
+    -- RFC6979 sec 2.4
+    sign_loop drbg
+  where
+    h = case hf of
+      Hash -> SHA256.hash m
+      NoHash -> m
 
-      h_modQ = remQ (bits2int h) -- bits2int yields nonnegative
+    h_modQ = remQ (bits2int h) -- bits2int yields nonnegative
 
-      sign_loop g = do
-        k <- gen_k g
-        let kg = _mul k
-            Affine (modQ -> r) _ = affine kg
-            s = case modinv k (fi _CURVE_Q) of
-              Nothing   -> error "ppad-secp256k1 (sign_ecdsa): bad k value"
-              Just kinv -> remQ (remQ (h_modQ + remQ (_SECRET * r)) * kinv)
-        if   r == 0 -- negligible probability
-        then sign_loop g
-        else let !sig = ECDSA r s
-             in  case ty of
-                   Unrestricted -> pure sig
-                   LowS -> pure (low sig)
+    sign_loop g = do
+      k <- gen_k g
+      let mpair = do
+            kg <- _mul k
+            let Affine (modQ -> r) _ = affine kg
+            kinv <- modinv k (fi _CURVE_Q)
+            let s = remQ (remQ (h_modQ + remQ (_SECRET * r)) * kinv)
+            pure $! (r, s)
+      case mpair of
+        Nothing -> pure Nothing
+        Just (r, s)
+          | r == 0 -> sign_loop g -- negligible probability
+          | otherwise ->
+              let !sig = Just $! ECDSA r s
+              in  case ty of
+                    Unrestricted -> pure sig
+                    LowS -> pure (fmap low sig)
 {-# INLINE _sign_ecdsa #-}
 
 -- RFC6979 sec 3.3b
@@ -1293,28 +1285,25 @@ verify_ecdsa_unrestricted'
 verify_ecdsa_unrestricted' tex = _verify_ecdsa_unrestricted (mul_wnaf tex)
 
 _verify_ecdsa_unrestricted
-  :: (Integer -> Projective) -- partially-applied multiplication function
+  :: (Integer -> Maybe Projective) -- partially-applied multiplication function
   -> BS.ByteString
   -> Pub
   -> ECDSA
   -> Bool
-_verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
+_verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s) = M.isJust $ do
   -- SEC1-v2 4.1.4
-  | not (ge r) || not (ge s) = False
-  | otherwise =
-      let e     = remQ (bits2int h)
-          s_inv = case modinv s (fi _CURVE_Q) of
-            -- 'ge s' assures existence of inverse
-            Nothing ->
-              error "ppad-secp256k1 (verify_ecdsa_unrestricted): no inverse"
-            Just si -> si
-          u1   = remQ (e * s_inv)
-          u2   = remQ (r * s_inv)
-          capR = add (_mul u1) (mul_unsafe p u2)
-      in  if   capR == _CURVE_ZERO
-          then False
-          else let Affine (modQ -> v) _ = affine capR
-               in  v == r
+  guard (ge r && ge s)
+  let e = remQ (bits2int h)
+  s_inv <- modinv s (fi _CURVE_Q)
+  let u1 = remQ (e * s_inv)
+      u2 = remQ (r * s_inv)
+  pt0 <- _mul u1
+  pt1 <- mul_unsafe p u2
+  let capR = add pt0 pt1
+  guard (capR /= _CURVE_ZERO)
+  let Affine (modQ -> v) _ = affine capR
+  guard (v == r)
+  pure ()
 {-# INLINE _verify_ecdsa_unrestricted #-}
 
 -- ecdh -----------------------------------------------------------------------
@@ -1338,13 +1327,10 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s)
 ecdh
   :: Projective    -- ^ public key
   -> Integer       -- ^ secret key
-  -> BS.ByteString -- ^ shared secret
-ecdh pub _SECRET
-  | not (ge _SECRET) = error "ppad-secp256k1 (ecdh): invalid secret key"
-  | otherwise =
-      let pt = mul pub _SECRET
-      in  if   pt == _CURVE_ZERO
-          then error "ppad-secp256k1 (ecdh): invalid public key"
-          else let Affine x _ = affine pt
-               in  SHA256.hash (unroll32 x)
+  -> Maybe BS.ByteString -- ^ shared secret
+ecdh pub _SECRET = do
+  pt <- mul pub _SECRET
+  guard (pt /= _CURVE_ZERO)
+  let Affine x _ = affine pt
+  pure $! SHA256.hash (unroll32 x)
 
