@@ -192,17 +192,15 @@ unroll32 (unroll -> u)
 
 -- (bip0340) return point with x coordinate == x and with even y coordinate
 lift :: Integer -> Maybe Affine
-lift x
-  | not (fe x) = Nothing
-  | otherwise =
-      let c = remP (modexp x 3 (fi _CURVE_P) + 7) -- modexp always nonnegative
-          e = (_CURVE_P + 1) `I.integerQuot` 4
-          y = modexp c (fi e) (fi _CURVE_P)
-          y_p | B.testBit y 0 = _CURVE_P - y
-              | otherwise = y
-      in  if   c /= modexp y 2 (fi _CURVE_P)
-          then Nothing
-          else Just $! Affine x y_p
+lift x = do
+  guard (fe x)
+  let c = remP (modexp x 3 (fi _CURVE_P) + 7) -- modexp always nonnegative
+      e = (_CURVE_P + 1) `I.integerQuot` 4
+      y = modexp c (fi e) (fi _CURVE_P)
+      y_p | B.testBit y 0 = _CURVE_P - y
+          | otherwise = y
+  guard (c == modexp y 2 (fi _CURVE_P))
+  pure $! Affine x y_p
 
 -- coordinate systems & transformations ---------------------------------------
 
@@ -366,10 +364,10 @@ modsqrtP n = runST $ do
 
   loop
   rv  <- readSTRef r
-  pure $
-    if   remP (rv * rv) == n
-    then Just $! rv
-    else Nothing
+
+  pure $ do
+    guard (remP (rv * rv) == n)
+    Just $! rv
 
 -- ec point operations --------------------------------------------------------
 
@@ -752,11 +750,10 @@ _parse_compressed h (roll32 -> x)
 _parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
 _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
   | h /= 0x04 = Nothing
-  | otherwise =
+  | otherwise = do
       let p = Projective x y 1
-      in  if   valid p
-          then Just $! p
-          else Nothing
+      guard (valid p)
+      pure $! p
 
 -- | Parse an ECDSA signature encoded in 64-byte "compact" form.
 --
