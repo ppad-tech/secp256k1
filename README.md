@@ -60,33 +60,33 @@ Haddocks (API documentation, etc.) are hosted at
 The aim is best-in-class performance for pure, highly-auditable Haskell
 code.
 
-Current benchmark figures on a relatively-beefy NixOS VPS look like
-(use `cabal bench` to run the benchmark suite):
+Current benchmark figures on an M4 MacBook Air look like (use `cabal
+bench` to run the benchmark suite):
 
 ```
-  benchmarking schnorr/sign_schnorr'
-  time                 2.584 ms   (2.491 ms .. 2.646 ms)
-                       0.994 R²   (0.991 R² .. 0.997 R²)
-  mean                 2.459 ms   (2.426 ms .. 2.492 ms)
-  std dev              114.5 μs   (95.32 μs .. 142.8 μs)
+  benchmarking schnorr/sign_schnorr' (large)
+  time                 1.400 ms   (1.399 ms .. 1.402 ms)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 1.406 ms   (1.404 ms .. 1.408 ms)
+  std dev              5.989 μs   (5.225 μs .. 7.317 μs)
 
   benchmarking schnorr/verify_schnorr'
-  time                 1.283 ms   (1.263 ms .. 1.301 ms)
-                       0.999 R²   (0.998 R² .. 0.999 R²)
-  mean                 1.273 ms   (1.260 ms .. 1.284 ms)
-  std dev              41.56 μs   (31.12 μs .. 54.35 μs)
+  time                 720.2 μs   (716.7 μs .. 724.8 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 724.6 μs   (722.0 μs .. 730.4 μs)
+  std dev              12.68 μs   (6.334 μs .. 26.31 μs)
 
-  benchmarking ecdsa/sign_ecdsa'
-  time                 222.6 μs   (219.9 μs .. 224.9 μs)
-                       0.999 R²   (0.999 R² .. 1.000 R²)
-  mean                 219.1 μs   (217.8 μs .. 220.5 μs)
-  std dev              4.523 μs   (3.525 μs .. 6.158 μs)
+  benchmarking ecdsa/sign_ecdsa' (large)
+  time                 115.3 μs   (115.1 μs .. 115.7 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 116.0 μs   (115.6 μs .. 116.4 μs)
+  std dev              1.367 μs   (1.039 μs .. 1.839 μs)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 1.267 ms   (1.260 ms .. 1.276 ms)
+  time                 702.3 μs   (699.9 μs .. 704.9 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 1.278 ms   (1.273 ms .. 1.286 ms)
-  std dev              21.32 μs   (15.43 μs .. 30.82 μs)
+  mean                 704.9 μs   (702.7 μs .. 708.4 μs)
+  std dev              9.641 μs   (6.638 μs .. 14.04 μs)
 ```
 
 In terms of allocations, we get:
@@ -128,72 +128,74 @@ multiplication, have been explicitly written so as to execute
 evidence from benchmarks supports this:
 
 ```
-  benchmarking derive_pub/sk = 2
-  time                 1.513 ms   (1.468 ms .. 1.565 ms)
-                       0.994 R²   (0.991 R² .. 0.997 R²)
-  mean                 1.579 ms   (1.557 ms .. 1.600 ms)
-  std dev              74.25 μs   (60.33 μs .. 93.80 μs)
+  benchmarking derive_pub/wnaf, sk = 2
+  time                 76.20 μs   (75.62 μs .. 77.33 μs)
+                       0.999 R²   (0.998 R² .. 1.000 R²)
+  mean                 75.87 μs   (75.61 μs .. 76.48 μs)
+  std dev              1.218 μs   (614.3 ns .. 2.291 μs)
+  variance introduced by outliers: 11% (moderately inflated)
 
-  benchmarking derive_pub/sk = 2 ^ 255 - 19
-  time                 1.571 ms   (1.530 ms .. 1.599 ms)
-                       0.997 R²   (0.995 R² .. 0.998 R²)
-  mean                 1.574 ms   (1.553 ms .. 1.589 ms)
-  std dev              57.72 μs   (45.29 μs .. 71.48 μs)
+  benchmarking derive_pub/wnaf, sk = 2 ^ 255 - 19
+  time                 76.50 μs   (75.88 μs .. 77.37 μs)
+                       0.999 R²   (0.998 R² .. 1.000 R²)
+  mean                 76.26 μs   (75.99 μs .. 76.93 μs)
+  std dev              1.317 μs   (570.7 ns .. 2.583 μs)
+  variance introduced by outliers: 12% (moderately inflated)
 
   benchmarking schnorr/sign_schnorr' (small)
-  time                 2.436 ms   (2.357 ms .. 2.516 ms)
-                       0.995 R²   (0.994 R² .. 0.998 R²)
-  mean                 2.563 ms   (2.532 ms .. 2.588 ms)
-  std dev              95.87 μs   (71.98 μs .. 127.2 μs)
+  time                 1.430 ms   (1.424 ms .. 1.438 ms)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 1.429 ms   (1.425 ms .. 1.433 ms)
+  std dev              13.71 μs   (10.48 μs .. 18.85 μs)
 
   benchmarking schnorr/sign_schnorr' (large)
-  time                 2.470 ms   (2.372 ms .. 2.543 ms)
-                       0.993 R²   (0.989 R² .. 0.997 R²)
-  mean                 2.407 ms   (2.374 ms .. 2.443 ms)
-  std dev              123.7 μs   (110.7 μs .. 144.9 μs)
+  time                 1.400 ms   (1.399 ms .. 1.402 ms)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 1.406 ms   (1.404 ms .. 1.408 ms)
+  std dev              5.989 μs   (5.225 μs .. 7.317 μs)
 
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 206.9 μs   (202.7 μs .. 211.8 μs)
-                       0.997 R²   (0.996 R² .. 0.999 R²)
-  mean                 213.8 μs   (211.5 μs .. 215.9 μs)
-  std dev              7.476 μs   (5.572 μs .. 9.698 μs)
+  time                 114.5 μs   (114.0 μs .. 115.3 μs)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 115.2 μs   (114.8 μs .. 115.8 μs)
+  std dev              1.650 μs   (1.338 μs .. 2.062 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 216.7 μs   (211.6 μs .. 221.7 μs)
-                       0.997 R²   (0.995 R² .. 0.999 R²)
-  mean                 221.8 μs   (219.5 μs .. 224.1 μs)
-  std dev              7.673 μs   (6.124 μs .. 10.69 μs)
+  time                 115.3 μs   (115.1 μs .. 115.7 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 116.0 μs   (115.6 μs .. 116.4 μs)
+  std dev              1.367 μs   (1.039 μs .. 1.839 μs)
 
   benchmarking ecdh/ecdh (small)
-  time                 1.623 ms   (1.605 ms .. 1.639 ms)
-                       0.999 R²   (0.998 R² .. 1.000 R²)
-  mean                 1.617 ms   (1.603 ms .. 1.624 ms)
-  std dev              32.52 μs   (20.66 μs .. 55.97 μs)
+  time                 907.0 μs   (902.8 μs .. 912.0 μs)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 909.5 μs   (907.0 μs .. 913.0 μs)
+  std dev              10.05 μs   (6.943 μs .. 17.11 μs)
 
   benchmarking ecdh/ecdh (large)
-  time                 1.623 ms   (1.580 ms .. 1.661 ms)
-                       0.996 R²   (0.992 R² .. 0.998 R²)
-  mean                 1.625 ms   (1.606 ms .. 1.641 ms)
-  std dev              58.38 μs   (44.31 μs .. 78.23 μs)
+  time                 922.9 μs   (911.0 μs .. 937.4 μs)
+                       0.999 R²   (0.998 R² .. 1.000 R²)
+  mean                 915.8 μs   (911.9 μs .. 922.5 μs)
+  std dev              16.84 μs   (9.830 μs .. 26.48 μs)
 ```
 
 Due to the use of arbitrary-precision integers, integer division modulo
 the elliptic curve group order does display persistent substantial
-timing differences on the order of 2 nanoseconds when the inputs differ
-dramatically in size (here 2 bits vs 255 bits):
+timing differences on the order of 1-2 nanoseconds when the inputs
+differ dramatically in size (here 2 bits vs 255 bits):
 
 ```
   benchmarking remQ (remainder modulo _CURVE_Q)/remQ 2
-  time                 27.44 ns   (27.19 ns .. 27.72 ns)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 27.23 ns   (27.03 ns .. 27.43 ns)
-  std dev              669.1 ps   (539.9 ps .. 860.2 ps)
+  time                 11.13 ns   (11.12 ns .. 11.14 ns)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 11.10 ns   (11.09 ns .. 11.11 ns)
+  std dev              33.75 ps   (30.27 ps .. 38.31 ps)
 
   benchmarking remQ (remainder modulo _CURVE_Q)/remQ (2 ^ 255 - 19)
-  time                 29.11 ns   (28.87 ns .. 29.33 ns)
-                       0.999 R²   (0.999 R² .. 1.000 R²)
-  mean                 29.04 ns   (28.82 ns .. 29.40 ns)
-  std dev              882.9 ps   (647.8 ps .. 1.317 ns)
+  time                 12.50 ns   (12.49 ns .. 12.51 ns)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 12.51 ns   (12.51 ns .. 12.52 ns)
+  std dev              26.72 ps   (14.45 ps .. 45.87 ps)
 ```
 
 This represents the worst-case scenario (real-world private keys will
