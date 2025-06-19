@@ -31,7 +31,7 @@ main = defaultMain [
 parse_int256 :: BS.ByteString -> Integer
 parse_int256 bs = case S.parse_int256 bs of
   Nothing -> error "bang"
-  Just s -> s
+  Just v -> v
 
 remQ :: Benchmark
 remQ = env setup $ \x ->

@@ -35,12 +35,12 @@ A sample GHCi session:
   > let msg = "i approve of this message"
   >
   > -- create and verify a schnorr signature for the message
-  > let sig0 = Secp256k1.sign_schnorr sec msg mempty
+  > let Just sig0 = Secp256k1.sign_schnorr sec msg mempty
   > Secp256k1.verify_schnorr msg pub sig0
   True
   >
   > -- create and verify a low-S ECDSA signature for the message
-  > let sig1 = Secp256k1.sign_ecdsa sec msg
+  > let Just sig1 = Secp256k1.sign_ecdsa sec msg
   > Secp256k1.verify_ecdsa msg pub sig1
   True
   >
