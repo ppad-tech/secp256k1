@@ -676,7 +676,7 @@ mul_wnaf Context {..} _SECRET = do
 --   >>> import qualified System.Entropy as E
 --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
 --   >>> derive_pub sk
---   "<secp256k1 point>"
+--   Just "<secp256k1 point>"
 derive_pub :: Integer -> Maybe Pub
 derive_pub = mul _CURVE_G
 {-# NOINLINE derive_pub #-}
@@ -688,7 +688,7 @@ derive_pub = mul _CURVE_G
 --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
 --   >>> let !tex = precompute
 --   >>> derive_pub' tex sk
---   "<secp256k1 point>"
+--   Just "<secp256k1 point>"
 derive_pub' :: Context -> Integer -> Maybe Pub
 derive_pub' = mul_wnaf
 {-# NOINLINE derive_pub' #-}
@@ -700,7 +700,7 @@ derive_pub' = mul_wnaf
 --
 --   >>> import qualified Data.ByteString as BS
 --   >>> parse_int256 (BS.replicate 32 0xFF)
---   <2^256 - 1>
+--   Just <2^256 - 1>
 parse_int256 :: BS.ByteString -> Maybe Integer
 parse_int256 bs = do
   guard (BS.length bs == 32)
@@ -758,7 +758,7 @@ _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
 -- | Parse an ECDSA signature encoded in 64-byte "compact" form.
 --
 --   >>> parse_sig <64-byte compact signature>
---   "<ecdsa signature>"
+--   Just "<ecdsa signature>"
 parse_sig :: BS.ByteString -> Maybe ECDSA
 parse_sig bs
   | BS.length bs /= 64 = Nothing
