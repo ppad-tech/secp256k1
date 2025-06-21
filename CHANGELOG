@@ -1,5 +1,10 @@
 # Changelog
 
+- 0.4.0 (2025-06-21)
+  * Scalar multiplication, signing, verifying, and ECHD functions are now
+    all total, returning 'Nothing' when supplied with invalid inputs.
+  * Adds a group element check to 'mul_wnaf'.
+
 - 0.3.0 (2025-03-14)
   * Adds 'ecdh' for computing ECDH secrets, any given secret being the
     SHA256 hash of the x-coordinate of the appropriate secp256k1 point.
