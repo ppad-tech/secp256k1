@@ -57,11 +57,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1737297956,
-        "narHash": "sha256-3/jNY1Qd1dIYUEQSH47xJxvgg5dS6fVFWwxasgcI9OA=",
+        "lastModified": 1740802952,
+        "narHash": "sha256-rYWQAzoXmxWQqBA2iPiRkSnb3xDjDt5aq3Fe0UyoS38=",
         "ref": "master",
-        "rev": "27a88d0f011578171aee824ef838dfbf60fa6898",
-        "revCount": 43,
+        "rev": "567288a1f3a558a69a6ee10a26e44f00310692f9",
+        "revCount": 51,
         "type": "git",
         "url": "git://git.ppad.tech/hmac-drbg.git"
       },
@@ -108,11 +108,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1737298572,
-        "narHash": "sha256-iAo6GFH1FLNi0wt0FczbqPCmVzCm9gfMEjk1oakExt0=",
+        "lastModified": 1740802974,
+        "narHash": "sha256-GTD9UrxwMa5zY7hxzDSXjKXKUwMK4r3FBHLG0nvgapk=",
         "ref": "master",
-        "rev": "abc984dc65f0df9bd958c0bc8f390c68e660f710",
-        "revCount": 87,
+        "rev": "ab0957e305dff0243dcab11e381470585849fd20",
+        "revCount": 94,
         "type": "git",
         "url": "git://git.ppad.tech/sha256.git"
       },
@@ -139,11 +139,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1737298660,
-        "narHash": "sha256-W8wuLHRH7P5oITCXnxKEEnSD2yX1Qo7uypbxpwKvvM8=",
+        "lastModified": 1740802979,
+        "narHash": "sha256-6VAXmA1XiIT/WFcP+eFb6uK3YyfgVqIgDv3ASNIoCMs=",
         "ref": "master",
-        "rev": "e8ce88cafbf32900556832d3817997642f128242",
-        "revCount": 21,
+        "rev": "ff165b29fb21b99749460ae7e3fdca42a85c822b",
+        "revCount": 28,
         "type": "git",
         "url": "git://git.ppad.tech/sha512.git"
       },
