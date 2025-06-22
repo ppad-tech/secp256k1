@@ -7,6 +7,12 @@
       url  = "git://git.ppad.tech/nixpkgs.git";
       ref  = "master";
     };
+    ppad-base16 = {
+      type = "git";
+      url  = "git://git.ppad.tech/base16.git";
+      ref  = "master";
+      inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
+    };
     ppad-sha256 = {
       type = "git";
       url  = "git://git.ppad.tech/sha256.git";
@@ -32,6 +38,7 @@
   };
 
   outputs = { self, nixpkgs, flake-utils, ppad-nixpkgs
+            , ppad-base16
             , ppad-sha256, ppad-sha512
             , ppad-hmac-drbg
             }:
@@ -42,13 +49,16 @@
         pkgs = import nixpkgs { inherit system; };
         hlib = pkgs.haskell.lib;
 
+        base16 = ppad-base16.packages.${system}.default;
         sha256 = ppad-sha256.packages.${system}.default;
         hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
 
         hpkgs = pkgs.haskell.packages.ghc981.extend (new: old: {
+          ppad-base16 = base16;
           ppad-sha256 = sha256;
           ppad-hmac-drbg = hmac-drbg;
           ${lib} = new.callCabal2nix lib ./. {
+            ppad-base16 = new.ppad-base16;
             ppad-sha256 = new.ppad-sha256;
             ppad-hmac-drbg = new.ppad-hmac-drbg;
           };

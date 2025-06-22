@@ -51,8 +51,8 @@ test-suite secp256k1-tests
       aeson
     , attoparsec
     , base
-    , base16-bytestring
     , bytestring
+    , ppad-base16
     , ppad-secp256k1
     , ppad-sha256
     , tasty
@@ -70,10 +70,10 @@ benchmark secp256k1-bench
 
   build-depends:
       base
-    , base16-bytestring
     , bytestring
     , criterion
     , deepseq
+    , ppad-base16
     , ppad-secp256k1
 
 benchmark secp256k1-weigh
@@ -87,9 +87,9 @@ benchmark secp256k1-weigh
 
   build-depends:
       base
-    , base16-bytestring
     , bytestring
     , deepseq
+    , ppad-base16
     , ppad-secp256k1
     , weigh
 

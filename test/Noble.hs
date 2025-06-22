@@ -21,6 +21,11 @@ import qualified GHC.Num.Integer as I
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, assertBool, assertFailure, testCase)
 
+decodeLenient :: BS.ByteString -> BS.ByteString
+decodeLenient bs = case B16.decode bs of
+  Nothing -> error "bang"
+  Just b -> b
+
 data Ecdsa = Ecdsa {
     ec_valid   :: ![(Int, ValidTest)]
   , ec_invalid :: !InvalidTest
@@ -63,7 +68,7 @@ execute_invalid_sign tex (label, InvalidSignTest {..}) =
 execute_invalid_verify :: Context -> (Int, InvalidVerifyTest) -> TestTree
 execute_invalid_verify tex (label, InvalidVerifyTest {..}) =
   testCase ("noble-secp256k1, invalid verify (" <> show label <> ")") $
-    case parse_point (B16.decodeLenient ivv_Q) of
+    case parse_point (decodeLenient ivv_Q) of
       Nothing -> assertBool "no parse" True
       Just pub -> do
         let sig = parse_compact ivv_signature
@@ -78,7 +83,7 @@ fi = fromIntegral
 
 -- parser helper
 toBS :: T.Text -> BS.ByteString
-toBS = B16.decodeLenient . TE.encodeUtf8
+toBS = decodeLenient . TE.encodeUtf8
 
 -- parser helper
 toSecKey :: T.Text -> Integer

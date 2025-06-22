@@ -21,6 +21,11 @@ import qualified Data.Text.Encoding as TE
 import Test.Tasty (TestTree, testGroup)
 import qualified Test.Tasty.HUnit as H (assertBool, assertEqual, testCase)
 
+decodeLenient :: BS.ByteString -> BS.ByteString
+decodeLenient bs = case B16.decode bs of
+  Nothing -> error "bang"
+  Just b -> b
+
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
@@ -129,11 +134,11 @@ parse_der_subjectpubkey = do
         Just pt -> pure pt
 
 der_to_pub :: T.Text -> Either String Projective
-der_to_pub (B16.decodeLenient . TE.encodeUtf8 -> bs) =
+der_to_pub (decodeLenient . TE.encodeUtf8 -> bs) =
   AT.parseOnly parse_der_pub bs
 
 parse_bigint :: T.Text -> Integer
-parse_bigint (B16.decodeLenient . TE.encodeUtf8 -> bs) = roll bs where
+parse_bigint (decodeLenient . TE.encodeUtf8 -> bs) = roll bs where
   roll :: BS.ByteString -> Integer
   roll = BS.foldl' alg 0 where
     alg !a (fi -> !b) = (a .<<. 8) .|. b

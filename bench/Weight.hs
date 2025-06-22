@@ -15,6 +15,11 @@ instance NFData S.Affine
 instance NFData S.ECDSA
 instance NFData S.Context
 
+decodeLenient :: BS.ByteString -> BS.ByteString
+decodeLenient bs = case B16.decode bs of
+  Nothing -> error "bang"
+  Just b -> b
+
 parse_int :: BS.ByteString -> Integer
 parse_int bs = case S.parse_int256 bs of
   Nothing -> error "bang"
@@ -109,18 +114,18 @@ ecdh = W.wgroup "ecdh" $ do
     W.func "ecdh (large)" (S.ecdh pub) b
   where
     b = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
-    Just pub = S.parse_point . B16.decodeLenient $
+    Just pub = S.parse_point . decodeLenient $
       "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
 
 s_sk :: Integer
-s_sk = parse_int . B16.decodeLenient $
+s_sk = parse_int . decodeLenient $
   "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
 
 s_sig :: BS.ByteString
-s_sig = B16.decodeLenient "6896BD60EEAE296DB48A229FF71DFE071BDE413E6D43F917DC8DCF8C78DE33418906D11AC976ABCCB20B091292BFF4EA897EFCB639EA871CFA95F6DE339E4B0A"
+s_sig = decodeLenient "6896BD60EEAE296DB48A229FF71DFE071BDE413E6D43F917DC8DCF8C78DE33418906D11AC976ABCCB20B091292BFF4EA897EFCB639EA871CFA95F6DE339E4B0A"
 
 s_pk_raw :: BS.ByteString
-s_pk_raw = B16.decodeLenient
+s_pk_raw = decodeLenient
   "DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659"
 
 s_pk :: S.Projective
@@ -129,15 +134,15 @@ s_pk = case S.parse_point s_pk_raw of
   Just !pt -> pt
 
 s_msg :: BS.ByteString
-s_msg = B16.decodeLenient
+s_msg = decodeLenient
   "243F6A8885A308D313198A2E03707344A4093822299F31D0082EFA98EC4E6C89"
 
 s_aux :: BS.ByteString
-s_aux = B16.decodeLenient
+s_aux = decodeLenient
   "0000000000000000000000000000000000000000000000000000000000000001"
 
 p_bs :: BS.ByteString
-p_bs = B16.decodeLenient
+p_bs = decodeLenient
   "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 
 p :: S.Projective
@@ -146,7 +151,7 @@ p = case S.parse_point p_bs of
   Just !pt -> pt
 
 q_bs :: BS.ByteString
-q_bs = B16.decodeLenient
+q_bs = decodeLenient
   "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
 
 q :: S.Projective
@@ -155,7 +160,7 @@ q = case S.parse_point q_bs of
   Just !pt -> pt
 
 r_bs :: BS.ByteString
-r_bs = B16.decodeLenient
+r_bs = decodeLenient
   "03a2113cf152585d96791a42cdd78782757fbfb5c6b2c11b59857eb4f7fda0b0e8"
 
 r :: S.Projective
@@ -164,7 +169,7 @@ r = case S.parse_point r_bs of
   Just !pt -> pt
 
 s_bs :: BS.ByteString
-s_bs = B16.decodeLenient
+s_bs = decodeLenient
   "0306413898a49c93cccf3db6e9078c1b6a8e62568e4a4770e0d7d96792d1c580ad"
 
 s :: S.Projective

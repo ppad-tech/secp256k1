@@ -21,6 +21,11 @@ fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
 
+decodeLenient :: BS.ByteString -> BS.ByteString
+decodeLenient bs = case B16.decode bs of
+  Nothing -> error "bang"
+  Just b -> b
+
 main :: IO ()
 main = do
   wp_ecdsa_sha256 <- TIO.readFile "etc/ecdsa_secp256k1_sha256_test.json"
@@ -89,19 +94,19 @@ render = filter (`notElem` ("\"" :: String)) . show
 
 parse_point_test_p :: TestTree
 parse_point_test_p = testCase (render p_hex) $
-  case parse_point (B16.decodeLenient p_hex) of
+  case parse_point (decodeLenient p_hex) of
     Nothing -> assertFailure "bad parse"
     Just p  -> assertEqual mempty p_pro p
 
 parse_point_test_q :: TestTree
 parse_point_test_q = testCase (render q_hex) $
-  case parse_point (B16.decodeLenient q_hex) of
+  case parse_point (decodeLenient q_hex) of
     Nothing -> assertFailure "bad parse"
     Just q  -> assertEqual mempty q_pro q
 
 parse_point_test_r :: TestTree
 parse_point_test_r = testCase (render r_hex) $
-  case parse_point (B16.decodeLenient r_hex) of
+  case parse_point (decodeLenient r_hex) of
     Nothing -> assertFailure "bad parse"
     Just r  -> assertEqual mempty r_pro r
 

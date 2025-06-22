@@ -21,6 +21,11 @@ import qualified GHC.Num.Integer as I
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
+decodeLenient :: BS.ByteString -> BS.ByteString
+decodeLenient bs = case B16.decode bs of
+  Nothing -> error "bang"
+  Just b -> b
+
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
@@ -39,7 +44,7 @@ execute_group tex ty EcdsaTestGroup {..} =
 
 execute :: Context -> SigType -> Projective -> EcdsaVerifyTest -> TestTree
 execute tex ty pub EcdsaVerifyTest {..} = testCase report $ do
-    let msg = B16.decodeLenient (TE.encodeUtf8 t_msg)
+    let msg = decodeLenient (TE.encodeUtf8 t_msg)
         sig = toEcdsa t_sig
     case sig of
       Left _  -> assertBool mempty (t_result == "invalid")
@@ -136,7 +141,7 @@ data PublicKey = PublicKey {
   } deriving Show
 
 toProjective :: T.Text -> Projective
-toProjective (B16.decodeLenient . TE.encodeUtf8 -> bs) = case parse_point bs of
+toProjective (decodeLenient . TE.encodeUtf8 -> bs) = case parse_point bs of
   Nothing -> error "wycheproof: couldn't parse pubkey"
   Just p -> p
 
@@ -148,7 +153,7 @@ instance A.FromJSON PublicKey where
     <*> fmap toProjective (m .: "uncompressed")
 
 toEcdsa :: T.Text -> Either String ECDSA
-toEcdsa (B16.decodeLenient . TE.encodeUtf8 -> bs) =
+toEcdsa (decodeLenient . TE.encodeUtf8 -> bs) =
   AT.parseOnly parse_der_sig bs
 
 data EcdsaVerifyTest = EcdsaVerifyTest {
