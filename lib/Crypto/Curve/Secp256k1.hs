@@ -843,7 +843,7 @@ _sign_schnorr _mul _SECRET m a = do
       k' = modQ (roll32 rand)
 
   if   k' == 0 -- negligible probability
-  then Nothing -- XX handle me
+  then Nothing
   else do
     pt <- _mul k'
     let Affine x_r y_r = affine pt
