@@ -118,12 +118,13 @@ garbage-collected language under an optimizing compiler such as GHC, in
 which strict constant-timeness can be [challenging to achieve][const].
 
 The Schnorr implementation within has been tested against the [official
-BIP0340 vectors][ut340], and ECDSA and ECDH have been tested against
-the relevant [Wycheproof vectors][wyche], so their implementations
-are likely to be accurate and safe from attacks targeting e.g. faulty
-nonce generation or malicious inputs for signature or public key
-parameters. Timing-sensitive operations, e.g. elliptic curve scalar
-multiplication, have been explicitly written so as to execute
+BIP0340 vectors][ut340], and ECDSA and ECDH have been tested against the
+relevant [Wycheproof vectors][wyche] (with the former also being tested
+against [noble-secp256k1's][noble] vectors), so their implementations
+are likely to be accurate and safe from attacks targeting e.g.
+faulty nonce generation or malicious inputs for signature or public
+key parameters. Timing-sensitive operations, e.g. elliptic curve
+scalar multiplication, have been explicitly written so as to execute
 *algorithmically* in time constant with respect to secret data, and
 evidence from benchmarks supports this:
 
@@ -240,3 +241,4 @@ to get a REPL for the main library.
 [flurl]: https://eprint.iacr.org/2014/140.pdf
 [const]: https://www.chosenplaintext.ca/articles/beginners-guide-constant-time-cryptography.html
 [csecp]: https://git.ppad.tech/csecp256k1
+[noble]: https://github.com/paulmillr/noble-secp256k1
