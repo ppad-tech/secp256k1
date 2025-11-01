@@ -19,6 +19,7 @@
       ref  = "master";
       inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
+    # transitive dependency via ppad-hmac-drbg
     ppad-sha512 = {
       type = "git";
       url  = "git://git.ppad.tech/sha512.git";

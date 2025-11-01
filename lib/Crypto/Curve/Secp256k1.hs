@@ -915,7 +915,6 @@ _verify_schnorr _mul m (affine -> Affine x_p _) sig
       guard (dif /= _CURVE_ZERO)
       let Affine x_R y_R = affine dif
       guard $ not (I.integerTestBit y_R 0 || x_R /= r)
-      pure ()
 {-# INLINE _verify_schnorr #-}
 
 -- hardcoded tag of BIP0340/aux
@@ -1244,8 +1243,8 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s) = M.isJust $ do
 --   >>> secret_as_computed_by_alice == secret_as_computed_by_bob
 --   True
 ecdh
-  :: Projective    -- ^ public key
-  -> Integer       -- ^ secret key
+  :: Projective          -- ^ public key
+  -> Integer             -- ^ secret key
   -> Maybe BS.ByteString -- ^ shared secret
 ecdh pub _SECRET = do
   pt <- mul pub _SECRET
