@@ -1221,7 +1221,6 @@ _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s) = M.isJust $ do
   guard (capR /= _CURVE_ZERO)
   let Affine (modQ -> v) _ = affine capR
   guard (v == r)
-  pure ()
 {-# INLINE _verify_ecdsa_unrestricted #-}
 
 -- ecdh -----------------------------------------------------------------------
