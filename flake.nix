@@ -78,6 +78,7 @@
         cc    = pkgs.stdenv.cc;
         ghc   = hpkgs.ghc;
         cabal = hpkgs.cabal-install;
+        llvm  = pkgs.llvmPackages_15.llvm;
       in
         {
           packages.default = hpkgs.${lib};
@@ -90,6 +91,7 @@
             buildInputs = [
               cabal
               cc
+              llvm
             ];
 
             inputsFrom = builtins.attrValues self.packages.${system};
@@ -102,6 +104,7 @@
               echo "cc:    $(${cc}/bin/cc --version)"
               echo "ghc:   $(${ghc}/bin/ghc --version)"
               echo "cabal: $(${cabal}/bin/cabal --version)"
+              echo "llc:   $(${llvm}/bin/llc --version | head -2 | tail -1)"
             '';
           };
         }
