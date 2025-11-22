@@ -75,6 +75,7 @@ benchmark secp256k1-bench
     , criterion
     , deepseq
     , ppad-base16
+    , ppad-fixed
     , ppad-secp256k1
 
 benchmark secp256k1-weigh
