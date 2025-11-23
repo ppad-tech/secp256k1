@@ -56,17 +56,23 @@
 
         pkgs = import nixpkgs { inherit system; };
         hlib = pkgs.haskell.lib;
+        llvm  = pkgs.llvmPackages_15.llvm;
 
         base16 = ppad-base16.packages.${system}.default;
         sha256 = ppad-sha256.packages.${system}.default;
         hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
+
         fixed = ppad-fixed.packages.${system}.default;
+        fixed-llvm =
+          hlib.addBuildTools
+            (hlib.enableCabalFlag fixed "llvm")
+            [ llvm ];
 
         hpkgs = pkgs.haskell.packages.ghc981.extend (new: old: {
           ppad-base16 = base16;
           ppad-sha256 = sha256;
           ppad-hmac-drbg = hmac-drbg;
-          ppad-fixed = fixed;
+          ppad-fixed = fixed-llvm;
           ${lib} = new.callCabal2nix lib ./. {
             ppad-base16 = new.ppad-base16;
             ppad-sha256 = new.ppad-sha256;
@@ -78,7 +84,6 @@
         cc    = pkgs.stdenv.cc;
         ghc   = hpkgs.ghc;
         cabal = hpkgs.cabal-install;
-        llvm  = pkgs.llvmPackages_15.llvm;
       in
         {
           packages.default = hpkgs.${lib};
@@ -94,7 +99,7 @@
               llvm
             ];
 
-            inputsFrom = builtins.attrValues self.packages.${system};
+            # inputsFrom = builtins.attrValues self.packages.${system};
 
             doBenchmark = true;
 

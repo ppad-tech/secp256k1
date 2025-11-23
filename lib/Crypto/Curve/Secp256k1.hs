@@ -175,26 +175,26 @@ roll32 bs = go (0 :: Word64) (0 :: Word64) (0 :: Word64) (0 :: Word64) 0 where
         in go acc0 acc1 acc2 ((acc3 `B.unsafeShiftL` 8) .|. b) (j + 1)
 {-# INLINE roll32 #-}
 
--- -- this "looks" inefficient due to the call to reverse, but it's
--- -- actually really fast
---
--- -- big-endian bytestring encoding
--- unroll :: Integer -> BS.ByteString
--- unroll i = case i of
---     0 -> BS.singleton 0
---     _ -> BS.reverse $ BS.unfoldr step i
---   where
---     step 0 = Nothing
---     step m = Just (fi m, m `I.integerShiftR` 8)
---
--- -- big-endian bytestring encoding for 256-bit ints, left-padding with
--- -- zeros if necessary. the size of the integer is not checked.
--- unroll32 :: Integer -> BS.ByteString
--- unroll32 (unroll -> u)
---     | l < 32 = BS.replicate (32 - l) 0 <> u
---     | otherwise = u
---   where
---     l = BS.length u
+-- this "looks" inefficient due to the call to reverse, but it's
+-- actually really fast
+
+-- big-endian bytestring encoding
+unroll :: Integer -> BS.ByteString
+unroll i = case i of
+    0 -> BS.singleton 0
+    _ -> BS.reverse $ BS.unfoldr step i
+  where
+    step 0 = Nothing
+    step m = Just (fi m, m `I.integerShiftR` 8)
+
+-- big-endian bytestring encoding for 256-bit ints, left-padding with
+-- zeros if necessary. the size of the integer is not checked.
+unroll32 :: Integer -> BS.ByteString
+unroll32 (unroll -> u)
+    | l < 32 = BS.replicate (32 - l) 0 <> u
+    | otherwise = u
+  where
+    l = BS.length u
 
 -- (bip0340) return point with x coordinate == x and with even y coordinate
 lift :: Integer -> Maybe Affine
@@ -248,6 +248,10 @@ affine p@(Projective x y z)
   | otherwise  =
       let !iz = C.inv z
       in  Affine (x * iz) (y * iz)
+
+from_montgomery :: Affine -> Pair Integer Integer
+from_montgomery (Affine (C.retr -> x) (C.retr -> y)) =
+  Pair (W.from x) (W.from y)
 
 -- Convert to projective coordinates.
 projective :: Affine -> Projective
@@ -598,124 +602,124 @@ mul p sec@(W.Wider _SECRET) = do
 --               nm = I.integerShiftR m 1
 --               nr = if I.integerTestBit m 0 then add r d else r
 --           in  loop nr nd nm
+
+-- | Precomputed multiples of the secp256k1 base or generator point.
+data Context = Context {
+    ctxW     :: {-# UNPACK #-} !Int
+  , ctxArray :: !(A.Array Projective)
+  } deriving (Eq, Generic)
+
+instance Show Context where
+  show Context {} = "<secp256k1 context>"
+
+-- | Create a secp256k1 context by precomputing multiples of the curve's
+--   generator point.
 --
--- -- | Precomputed multiples of the secp256k1 base or generator point.
--- data Context = Context {
---     ctxW     :: {-# UNPACK #-} !Int
---   , ctxArray :: !(A.Array Projective)
---   } deriving (Eq, Generic)
+--   This should be used once to create a 'Context' to be reused
+--   repeatedly afterwards.
 --
--- instance Show Context where
---   show Context {} = "<secp256k1 context>"
---
--- -- | Create a secp256k1 context by precomputing multiples of the curve's
--- --   generator point.
--- --
--- --   This should be used once to create a 'Context' to be reused
--- --   repeatedly afterwards.
--- --
--- --   >>> let !tex = precompute
--- --   >>> sign_ecdsa' tex sec msg
--- --   >>> sign_schnorr' tex sec msg aux
--- precompute :: Context
--- precompute = _precompute 8
---
--- -- dumb strict pair
--- data Pair a b = Pair !a !b
---
--- -- translation of noble-secp256k1's 'precompute'
--- _precompute :: Int -> Context
--- _precompute ctxW = Context {..} where
---   ctxArray = A.arrayFromListN size (loop_w mempty _CURVE_G 0)
---   capJ = (2 :: Int) ^ (ctxW - 1)
---   ws = 256 `quot` ctxW + 1
---   size = ws * capJ
---
---   loop_w !acc !p !w
---     | w == ws = reverse acc
---     | otherwise =
---         let b = p
---             !(Pair nacc nb) = loop_j p (b : acc) b 1
---             np = double nb
---         in  loop_w nacc np (succ w)
---
---   loop_j !p !acc !b !j
---     | j == capJ = Pair acc b
---     | otherwise =
---         let nb = add b p
---         in  loop_j p (nb : acc) nb (succ j)
+--   >>> let !tex = precompute
+--   >>> sign_ecdsa' tex sec msg
+--   >>> sign_schnorr' tex sec msg aux
+precompute :: Context
+precompute = _precompute 8
+
+-- dumb strict pair
+data Pair a b = Pair !a !b
+
+-- translation of noble-secp256k1's 'precompute'
+_precompute :: Int -> Context
+_precompute ctxW = Context {..} where
+  ctxArray = A.arrayFromListN size (loop_w mempty _CURVE_G 0)
+  capJ = (2 :: Int) ^ (ctxW - 1)
+  ws = 256 `quot` ctxW + 1
+  size = ws * capJ
+
+  loop_w !acc !p !w
+    | w == ws = reverse acc
+    | otherwise =
+        let b = p
+            !(Pair nacc nb) = loop_j p (b : acc) b 1
+            np = double nb
+        in  loop_w nacc np (succ w)
+
+  loop_j !p !acc !b !j
+    | j == capJ = Pair acc b
+    | otherwise =
+        let nb = add b p
+        in  loop_j p (nb : acc) nb (succ j)
 
 -- -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
--- -- secp256k1 points.
--- mul_wnaf :: Context -> Integer -> Maybe Projective
--- mul_wnaf Context {..} _SECRET = do
---     guard (ge _SECRET)
---     pure $! loop 0 _CURVE_ZERO _CURVE_G _SECRET
---   where
---     wins = 256 `quot` ctxW + 1
---     wsize = 2 ^ (ctxW - 1)
---     mask = 2 ^ ctxW - 1
---     mnum = 2 ^ ctxW
---
---     loop !w !acc !f !n
---       | w == wins = acc
---       | otherwise =
---           let !off0 = w * fi wsize
---
---               -- XX branches on secret data
---
---               -- b0    = n & (m-1)
---               -- carry = (b0 >> (w-1)) & 1                -- 0 or 1
---               -- d     = b0 - carry*m                     -- signed in [-(m-1), ..., +(m-1)]
---               -- n'    = (n >> w) + carry
---               !b0 = n `I.integerAnd` mask
---               !n0 = n `I.integerShiftR` fi ctxW
---
---               !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
---                             | otherwise  = Pair b0 n0
---
---               -- XX branches on secret data
---
---               -- sgn  = maskbit(d < 0)        -- 0x..FF if d<0 else 0x..00
---               -- ad   = abs(d) = (d ^ sgn) - sgn
---               !c0 = B.testBit w 0
---               !c1 = b1 < 0
---
---               !off1 = off0 + fi (abs b1) - 1
---
---           in  if   b1 == 0
---               then let !pr = A.indexArray ctxArray off0
---                        !pt | c0 = neg pr
---                            | otherwise = pr
---                    in  loop (w + 1) acc (add f pt) n1
---               else let !pr = A.indexArray ctxArray off1
---                        !pt | c1 = neg pr
---                            | otherwise = pr
---                    in  loop (w + 1) (add acc pt) f n1
--- {-# INLINE mul_wnaf #-}
+-- secp256k1 points.
+mul_wnaf :: Context -> Integer -> Maybe Projective
+mul_wnaf Context {..} _SECRET = do
+    guard (ge _SECRET)
+    pure $! loop 0 _CURVE_ZERO _CURVE_G _SECRET
+  where
+    wins = 256 `quot` ctxW + 1
+    wsize = 2 ^ (ctxW - 1)
+    mask = 2 ^ ctxW - 1
+    mnum = 2 ^ ctxW
 
--- -- | Derive a public key (i.e., a secp256k1 point) from the provided
--- --   secret.
--- --
--- --   >>> import qualified System.Entropy as E
--- --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
--- --   >>> derive_pub sk
--- --   Just "<secp256k1 point>"
--- derive_pub :: Integer -> Maybe Pub
--- derive_pub = mul _CURVE_G
--- {-# NOINLINE derive_pub #-}
+    loop !w !acc !f !n
+      | w == wins = acc
+      | otherwise =
+          let !off0 = w * fi wsize
+
+              -- XX branches on secret data
+
+              -- b0    = n & (m-1)
+              -- carry = (b0 >> (w-1)) & 1                -- 0 or 1
+              -- d     = b0 - carry*m                     -- signed in [-(m-1), ..., +(m-1)]
+              -- n'    = (n >> w) + carry
+              !b0 = n `I.integerAnd` mask
+              !n0 = n `I.integerShiftR` fi ctxW
+
+              !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
+                            | otherwise  = Pair b0 n0
+
+              -- XX branches on secret data
+
+              -- sgn  = maskbit(d < 0)        -- 0x..FF if d<0 else 0x..00
+              -- ad   = abs(d) = (d ^ sgn) - sgn
+              !c0 = B.testBit w 0
+              !c1 = b1 < 0
+
+              !off1 = off0 + fi (abs b1) - 1
+
+          in  if   b1 == 0
+              then let !pr = A.indexArray ctxArray off0
+                       !pt | c0 = neg pr
+                           | otherwise = pr
+                   in  loop (w + 1) acc (add f pt) n1
+              else let !pr = A.indexArray ctxArray off1
+                       !pt | c1 = neg pr
+                           | otherwise = pr
+                   in  loop (w + 1) (add acc pt) f n1
+{-# INLINE mul_wnaf #-}
+
+-- | Derive a public key (i.e., a secp256k1 point) from the provided
+--   secret.
 --
--- -- | The same as 'derive_pub', except uses a 'Context' to optimise
--- --   internal calculations.
--- --
--- --   >>> import qualified System.Entropy as E
--- --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
--- --   >>> let !tex = precompute
--- --   >>> derive_pub' tex sk
--- --   Just "<secp256k1 point>"
--- derive_pub' :: Context -> Integer -> Maybe Pub
--- derive_pub' = mul_wnaf
--- {-# NOINLINE derive_pub' #-}
+--   >>> import qualified System.Entropy as E
+--   >>> sk <- fmap parse_int256 (E.getEntropy 32)
+--   >>> derive_pub sk
+--   Just "<secp256k1 point>"
+derive_pub :: W.Wider -> Maybe Pub
+derive_pub = mul _CURVE_G
+{-# NOINLINE derive_pub #-}
+
+-- | The same as 'derive_pub', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   >>> import qualified System.Entropy as E
+--   >>> sk <- fmap parse_int256 (E.getEntropy 32)
+--   >>> let !tex = precompute
+--   >>> derive_pub' tex sk
+--   Just "<secp256k1 point>"
+derive_pub' :: Context -> Integer -> Maybe Pub
+derive_pub' = mul_wnaf
+{-# NOINLINE derive_pub' #-}
 
 -- parsing --------------------------------------------------------------------
 
@@ -1246,32 +1250,32 @@ _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
 --   let Affine (modQ -> v) _ = affine capR
 --   guard (v == r)
 -- {-# INLINE _verify_ecdsa_unrestricted #-}
+
+-- ecdh -----------------------------------------------------------------------
+
+-- SEC1-v2 3.3.1, plus SHA256 hash
+
+-- | Compute a shared secret, given a secret key and public secp256k1 point,
+--   via Elliptic Curve Diffie-Hellman (ECDH).
 --
--- -- ecdh -----------------------------------------------------------------------
+--   The shared secret is the SHA256 hash of the x-coordinate of the
+--   point obtained by scalar multiplication.
 --
--- -- SEC1-v2 3.3.1, plus SHA256 hash
---
--- -- | Compute a shared secret, given a secret key and public secp256k1 point,
--- --   via Elliptic Curve Diffie-Hellman (ECDH).
--- --
--- --   The shared secret is the SHA256 hash of the x-coordinate of the
--- --   point obtained by scalar multiplication.
--- --
--- --   >>> let sec_alice = 0x03                   -- contrived
--- --   >>> let sec_bob   = 2 ^ 128 - 1            -- contrived
--- --   >>> let Just pub_alice = derive_pub sec_alice
--- --   >>> let Just pub_bob   = derive_pub sec_bob
--- --   >>> let secret_as_computed_by_alice = ecdh pub_bob sec_alice
--- --   >>> let secret_as_computed_by_bob   = ecdh pub_alice sec_bob
--- --   >>> secret_as_computed_by_alice == secret_as_computed_by_bob
--- --   True
--- ecdh
---   :: Projective          -- ^ public key
---   -> Integer             -- ^ secret key
---   -> Maybe BS.ByteString -- ^ shared secret
--- ecdh pub _SECRET = do
---   pt <- mul pub _SECRET
---   guard (pt /= _CURVE_ZERO)
---   let Affine x _ = affine pt
---   pure $! SHA256.hash (unroll32 x)
---
+--   >>> let sec_alice = 0x03                   -- contrived
+--   >>> let sec_bob   = 2 ^ 128 - 1            -- contrived
+--   >>> let Just pub_alice = derive_pub sec_alice
+--   >>> let Just pub_bob   = derive_pub sec_bob
+--   >>> let secret_as_computed_by_alice = ecdh pub_bob sec_alice
+--   >>> let secret_as_computed_by_bob   = ecdh pub_alice sec_bob
+--   >>> secret_as_computed_by_alice == secret_as_computed_by_bob
+--   True
+ecdh
+  :: Projective          -- ^ public key
+  -> W.Wider             -- ^ secret key
+  -> Maybe BS.ByteString -- ^ shared secret
+ecdh pub _SECRET = do
+  pt <- mul pub _SECRET
+  guard (pt /= _CURVE_ZERO)
+  let !(Pair x _) = from_montgomery (affine pt)
+  pure $! SHA256.hash (unroll32 x)
+

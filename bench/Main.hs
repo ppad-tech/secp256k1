@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns -fno-warn-type-defaults #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -11,10 +11,12 @@ import Control.DeepSeq
 import Criterion.Main
 import qualified Crypto.Curve.Secp256k1 as S
 
+import qualified Numeric.Montgomery.Secp256k1.Curve as C
+
 instance NFData S.Projective
 instance NFData S.Affine
 -- instance NFData S.ECDSA
--- instance NFData S.Context
+instance NFData S.Context
 
 decodeLenient :: BS.ByteString -> BS.ByteString
 decodeLenient bs = case B16.decode bs of
@@ -27,11 +29,11 @@ main = defaultMain [
     add
   , mul
   --, precompute
-  --, mul_wnaf
-  --, derive_pub
+  , mul_wnaf
+  , derive_pub
   --, schnorr
   --, ecdsa
-  --, ecdh
+  , ecdh
   ]
 
 parse_int256 :: BS.ByteString -> Integer
@@ -68,6 +70,12 @@ parse_int256 bs = case S.parse_int256 bs of
 --           big   = BS.replicate 32 0xFF
 --       pure (small, big)
 
+mul_fixed :: Benchmark
+mul_fixed = bgroup "mul_fixed" [
+    bench "curve:  M(2) * M(2)" $ nf (C.mul 2) 2
+  , bench "curve:  M(2) * M(2 ^ 255 - 19)" $ nf (C.mul 2) (2 ^ 255 - 19)
+  ]
+
 add :: Benchmark
 add = bgroup "add" [
     bench "2 p (double, trivial projective point)" $ nf (S.add p) p
@@ -78,46 +86,50 @@ add = bgroup "add" [
   ]
 
 mul :: Benchmark
-mul = env setup $ \x ->
-    bgroup "mul" [
-      bench "2 G" $ nf (S.mul S._CURVE_G) (W.to 2)
-    , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
-    ]
-  where
-    setup = pure . W.to . parse_int256 $ decodeLenient
-      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+mul = bench "mul" $ nf (S.mul p) (W.to 12831231)
+
+
+-- mul :: Benchmark
+-- mul = env setup $ \x ->
+--     bgroup "mul" [
+--       bench "2 G" $ nf (S.mul S._CURVE_G) (W.to 2)
+--     , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
+--     ]
+--   where
+--     setup = pure . W.to . parse_int256 $ decodeLenient
+--       "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 -- precompute :: Benchmark
 -- precompute = bench "precompute" $ nfIO (pure S.precompute)
---
--- mul_wnaf :: Benchmark
--- mul_wnaf = env setup $ \ ~(tex, x) ->
---     bgroup "mul_wnaf" [
---       bench "2 G" $ nf (S.mul_wnaf tex) 2
---     , bench "(2 ^ 255 - 19) G" $ nf (S.mul_wnaf tex) x
---     ]
---   where
---     setup = do
---       let !tex = S.precompute
---           !int = parse_int256 $ decodeLenient
---             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
---       pure (tex, int)
---
--- derive_pub :: Benchmark
--- derive_pub = env setup $ \ ~(tex, x) ->
---     bgroup "derive_pub" [
---       bench "sk = 2" $ nf S.derive_pub 2
---     , bench "sk = 2 ^ 255 - 19" $ nf S.derive_pub x
---     , bench "wnaf, sk = 2" $ nf (S.derive_pub' tex) 2
---     , bench "wnaf, sk = 2 ^ 255 - 19" $ nf (S.derive_pub' tex) x
---     ]
---   where
---     setup = do
---       let !tex = S.precompute
---           !int = parse_int256 $ decodeLenient
---             "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
---       pure (tex, int)
---
+
+mul_wnaf :: Benchmark
+mul_wnaf = env setup $ \ ~(tex, x) ->
+    bgroup "mul_wnaf" [
+      bench "2 G" $ nf (S.mul_wnaf tex) 2
+    , bench "(2 ^ 255 - 19) G" $ nf (S.mul_wnaf tex) x
+    ]
+  where
+    setup = do
+      let !tex = S.precompute
+          !int = parse_int256 $ decodeLenient
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+      pure (tex, int)
+
+derive_pub :: Benchmark
+derive_pub = env setup $ \ ~(tex, x) ->
+    bgroup "derive_pub" [
+      bench "sk = 2" $ nf S.derive_pub (W.to 2)
+    , bench "sk = 2 ^ 255 - 19" $ nf S.derive_pub x
+    , bench "wnaf, sk = 2" $ nf (S.derive_pub' tex) 2
+    , bench "wnaf, sk = 2 ^ 255 - 19" $ nf (S.derive_pub' tex) (W.from x)
+    ]
+  where
+    setup = do
+      let !tex = S.precompute
+          !int = parse_int256 $ decodeLenient
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+      pure (tex, W.to int)
+
 -- schnorr :: Benchmark
 -- schnorr = env setup $ \ ~(tex, big) ->
 --     bgroup "schnorr" [
@@ -154,47 +166,66 @@ mul = env setup $ \x ->
 --           msg = "i approve of this message"
 --           Just sig = S.sign_ecdsa big s_msg
 --       pure (tex, big, pub, msg, sig)
---
--- ecdh :: Benchmark
--- ecdh = env setup $ \ ~(big, pub) ->
---     bgroup "ecdh" [
---       bench "ecdh (small)" $ nf (S.ecdh pub) 2
---     , bench "ecdh (large)" $ nf (S.ecdh pub) big
---     ]
---   where
---     setup = do
---       let !big =
---             0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
---           !(Just !pub) = S.parse_point . decodeLenient $
---             "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
---       pure (big, pub)
 
-p_bs :: BS.ByteString
-p_bs = decodeLenient
-  "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+ecdh :: Benchmark
+ecdh = env setup $ \ ~(big, pub) ->
+    bgroup "ecdh" [
+      bench "ecdh (small)" $ nf (S.ecdh pub) (W.to 2)
+    , bench "ecdh (large)" $ nf (S.ecdh pub) big
+    ]
+  where
+    setup = do
+      let !big =
+            W.to 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
+          !(Just !pub) = S.parse_point . decodeLenient $
+            "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
+      pure (big, pub)
+
 
 p :: S.Projective
-p = case S.parse_point p_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
-
-q_bs :: BS.ByteString
-q_bs = decodeLenient
-  "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+p = S.Projective
+  55066263022277343669578718895168534326250603453777594175500187360389116729240
+  32670510020758816978083085130507043184471273380659243275938904335757337482424
+  1
 
 q :: S.Projective
-q = case S.parse_point q_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
-
-r_bs :: BS.ByteString
-r_bs = decodeLenient
-  "03a2113cf152585d96791a42cdd78782757fbfb5c6b2c11b59857eb4f7fda0b0e8"
+q = S.Projective
+  112711660439710606056748659173929673102114977341539408544630613555209775888121
+  25583027980570883691656905877401976406448868254816295069919888960541586679410
+  1
 
 r :: S.Projective
-r = case S.parse_point r_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
+r = S.Projective
+  73305138481390301074068425511419969342201196102229546346478796034582161436904
+  77311080844824646227678701997218206005272179480834599837053144390237051080427
+  1
+
+-- p_bs :: BS.ByteString
+-- p_bs = decodeLenient
+--   "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+--
+-- p :: S.Projective
+-- p = case S.parse_point p_bs of
+--   Nothing -> error "bang"
+--   Just !pt -> pt
+--
+-- q_bs :: BS.ByteString
+-- q_bs = decodeLenient
+--   "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+--
+-- q :: S.Projective
+-- q = case S.parse_point q_bs of
+--   Nothing -> error "bang"
+--   Just !pt -> pt
+--
+-- r_bs :: BS.ByteString
+-- r_bs = decodeLenient
+--   "03a2113cf152585d96791a42cdd78782757fbfb5c6b2c11b59857eb4f7fda0b0e8"
+--
+-- r :: S.Projective
+-- r = case S.parse_point r_bs of
+--   Nothing -> error "bang"
+--   Just !pt -> pt
 
 s_bs :: BS.ByteString
 s_bs = decodeLenient
@@ -205,13 +236,13 @@ s = case S.parse_point s_bs of
   Nothing -> error "bang"
   Just !pt -> pt
 
-t_bs :: BS.ByteString
-t_bs = decodeLenient "04b838ff44e5bc177bf21189d0766082fc9d843226887fc9760371100b7ee20a6ff0c9d75bfba7b31a6bca1974496eeb56de357071955d83c4b1badaa0b21832e9"
-
-t :: S.Projective
-t = case S.parse_point t_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
+-- t_bs :: BS.ByteString
+-- t_bs = decodeLenient "04b838ff44e5bc177bf21189d0766082fc9d843226887fc9760371100b7ee20a6ff0c9d75bfba7b31a6bca1974496eeb56de357071955d83c4b1badaa0b21832e9"
+--
+-- t :: S.Projective
+-- t = case S.parse_point t_bs of
+--   Nothing -> error "bang"
+--   Just !pt -> pt
 
 -- s_sk :: Integer
 -- s_sk = parse_int256 . decodeLenient $

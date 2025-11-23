@@ -184,11 +184,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1763816080,
-        "narHash": "sha256-dHPSezr7Y5M5YgK2d+p62XW6jckNiDfjpAw32VqT8nQ=",
+        "lastModified": 1763905570,
+        "narHash": "sha256-uqTvkAlY/1rUEQx1G54UuMxkAbrWtLhPtvFU4nmq2Rk=",
         "ref": "master",
-        "rev": "5145ed6597dfdac8ffa3d52f2ed892f69831315b",
-        "revCount": 162,
+        "rev": "1517cd938c0447460d32872e75ab798d2d5d245b",
+        "revCount": 171,
         "type": "git",
         "url": "git://git.ppad.tech/fixed.git"
       },
