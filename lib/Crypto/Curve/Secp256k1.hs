@@ -2,10 +2,11 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE UnboxedTuples #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -22,263 +23,270 @@
 -- "low-S" signatures), and ECDH shared secret computation
 --  on the elliptic curve secp256k1.
 
-module Crypto.Curve.Secp256k1 where --(
-  -- -- * Field and group parameters
-  --   _CURVE_Q
-  -- , _CURVE_P
-  -- , remQ
-  -- , modQ
+module Crypto.Curve.Secp256k1 (
+  -- * Field and group parameters
+    _CURVE_Q
+  , _CURVE_P
+  , modQ
 
-  -- -- * secp256k1 points
-  -- , Pub
-  -- , derive_pub
-  -- , derive_pub'
-  -- , _CURVE_G
-  -- , _CURVE_ZERO
+  -- * secp256k1 points
+  , Pub
+  , derive_pub
+  , derive_pub'
+  , _CURVE_G
+  , _CURVE_ZERO
 
-  -- -- * Parsing
-  -- , parse_int256
-  -- , parse_point
-  -- , parse_sig
+  -- * Parsing
+  , parse_int256
+  , parse_point
+  , parse_sig
 
-  -- -- * Serializing
-  -- , serialize_point
+  -- * Serializing
+  , serialize_point
 
-  -- -- * ECDH
-  -- , ecdh
+  -- * ECDH
+  , ecdh
 
-  -- -- * BIP0340 Schnorr signatures
-  -- , sign_schnorr
-  -- , verify_schnorr
+  -- * BIP0340 Schnorr signatures
+  , sign_schnorr
+  , verify_schnorr
 
-  -- -- * RFC6979 ECDSA
-  -- , ECDSA(..)
-  -- , SigType(..)
-  -- , sign_ecdsa
-  -- , sign_ecdsa_unrestricted
-  -- , verify_ecdsa
-  -- , verify_ecdsa_unrestricted
+  -- * RFC6979 ECDSA
+  , ECDSA(..)
+  , SigType(..)
+  , sign_ecdsa
+  , sign_ecdsa_unrestricted
+  , verify_ecdsa
+  , verify_ecdsa_unrestricted
 
-  -- -- * Fast variants
-  -- , Context
-  -- , precompute
-  -- , sign_schnorr'
-  -- , verify_schnorr'
-  -- , sign_ecdsa'
-  -- , sign_ecdsa_unrestricted'
-  -- , verify_ecdsa'
-  -- , verify_ecdsa_unrestricted'
+  -- * Fast variants
+  , Context
+  , precompute
+  , sign_schnorr'
+  , verify_schnorr'
+  , sign_ecdsa'
+  , sign_ecdsa_unrestricted'
+  , verify_ecdsa'
+  , verify_ecdsa_unrestricted'
 
-  -- -- Elliptic curve group operations
-  -- , neg
-  -- , add
-  -- , double
-  -- , mul
-  -- , mul_unsafe
-  -- , mul_wnaf
+  -- Elliptic curve group operations
+  , neg
+  , add
+  , double
+  , mul
+  , mul_unsafe
+  , mul_wnaf
 
-  -- -- Coordinate systems and transformations
-  -- , Affine(..)
-  -- , Projective(..)
-  -- , affine
-  -- , projective
-  -- , valid
+  -- Coordinate systems and transformations
+  , Affine(..)
+  , Projective(..)
+  , affine
+  , projective
+  , valid
 
-  -- -- for testing/benchmarking
-  -- , _sign_ecdsa_no_hash
-  -- , _sign_ecdsa_no_hash'
-  -- ) where
+  -- for testing/benchmarking
+  , _sign_ecdsa_no_hash
+  , _sign_ecdsa_no_hash'
+  ) where
 
-import Control.Monad (guard, when)
+import Control.Monad (guard)
 import Control.Monad.ST
 import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
-import Data.Bits ((.|.))
+import Data.Bits ((.&.))
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
-import qualified Data.Maybe as M (isJust)
+import qualified Data.Choice as CT
+import qualified Data.Maybe as M
 import qualified Data.Primitive.Array as A
 import Data.STRef
-import Data.Word (Word8, Word64)
-import GHC.Generics
-import GHC.Natural
-import qualified GHC.Num.Integer as I
-
+import Data.Word (Word8)
+import Data.Word.Limb (Limb(..))
+import qualified Data.Word.Limb as L
+import Data.Word.Wider (Wider(..))
 import qualified Data.Word.Wider as W
+import qualified Foreign.Storable as Storable (pokeByteOff)
+import qualified GHC.Exts as Exts
+import GHC.Generics
+import qualified GHC.Int (Int(..))
+import qualified GHC.Word (Word(..), Word8(..))
 import qualified Numeric.Montgomery.Secp256k1.Curve as C
 import qualified Numeric.Montgomery.Secp256k1.Scalar as S
-import qualified Data.Choice as CT
+import Prelude hiding (sqrt)
 
--- note the use of GHC.Num.Integer-qualified functions throughout this
--- module; in some cases explicit use of these functions (especially
--- I.integerPowMod# and I.integerRecipMod#) yields tremendous speedups
--- compared to more general versions
-
--- keystroke savers & other utilities -----------------------------------------
+-- utilities ------------------------------------------------------------------
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
 
--- generic modular exponentiation
--- b ^ e mod m
-modexp :: Integer -> Natural -> Natural -> Integer
-modexp b (fi -> e) m = case I.integerPowMod# b e m of
-  (# fi -> n | #) -> n
-  (# | _ #) -> error "ppad-secp256k1 (modexp): internal error"
-{-# INLINE modexp #-}
+-- dumb strict pair
+data Pair a b = Pair !a !b
 
--- -- generic modular inverse
--- -- for a, m return x such that ax = 1 mod m
--- modinv :: Integer -> Natural -> Maybe Integer
--- modinv a m = case I.integerRecipMod# a m of
---   (# fi -> n | #) -> Just $! n
---   (# | _ #) -> Nothing
--- {-# INLINE modinv #-}
---
--- -- bytewise xor
--- xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
--- xor = BS.packZipWith B.xor
+-- convenience pattern
+pattern Zero :: Wider
+pattern Zero = Wider (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
+
+-- convert a Word8 to a Limb
+limb :: Word8 -> Limb
+limb (GHC.Word.W8# (Exts.word8ToWord# -> w)) = Limb w
+{-# INLINABLE limb #-}
+
+-- convert a Limb to a Word8
+word8 :: Limb -> Word8
+word8 (Limb w) = GHC.Word.W8# (Exts.wordToWord8# w)
+{-# INLINABLE word8 #-}
+
+-- convert a Limb to a Word8 after right-shifting
+word8s :: Limb -> Exts.Int# -> Word8
+word8s l s =
+  let !(Limb w) = L.shr# l s
+  in  GHC.Word.W8# (Exts.wordToWord8# w)
+{-# INLINABLE word8s #-}
+
+-- convert a Word8 to a Wider
+word8_to_wider :: Word8 -> Wider
+word8_to_wider w = Wider (# limb w, Limb 0##, Limb 0##, Limb 0## #)
+{-# INLINABLE word8_to_wider #-}
+
+wider_to_int :: Wider -> Int
+wider_to_int (Wider (# Limb l, _, _, _ #)) = GHC.Int.I# (Exts.word2Int# l)
+{-# INLINABLE wider_to_int #-}
+
+-- unsafely extract the first 64-bit word from a big-endian-encoded bytestring
+unsafe_word0 :: BS.ByteString -> Limb
+unsafe_word0 bs =
+          (limb (BU.unsafeIndex bs 00) `L.shl#` 56#)
+  `L.or#` (limb (BU.unsafeIndex bs 01) `L.shl#` 48#)
+  `L.or#` (limb (BU.unsafeIndex bs 02) `L.shl#` 40#)
+  `L.or#` (limb (BU.unsafeIndex bs 03) `L.shl#` 32#)
+  `L.or#` (limb (BU.unsafeIndex bs 04) `L.shl#` 24#)
+  `L.or#` (limb (BU.unsafeIndex bs 05) `L.shl#` 16#)
+  `L.or#` (limb (BU.unsafeIndex bs 06) `L.shl#` 08#)
+  `L.or#` (limb (BU.unsafeIndex bs 07))
+{-# INLINABLE unsafe_word0 #-}
+
+-- unsafely extract the second 64-bit word from a big-endian-encoded bytestring
+unsafe_word1 :: BS.ByteString -> Limb
+unsafe_word1 bs =
+          (limb (BU.unsafeIndex bs 08) `L.shl#` 56#)
+  `L.or#` (limb (BU.unsafeIndex bs 09) `L.shl#` 48#)
+  `L.or#` (limb (BU.unsafeIndex bs 10) `L.shl#` 40#)
+  `L.or#` (limb (BU.unsafeIndex bs 11) `L.shl#` 32#)
+  `L.or#` (limb (BU.unsafeIndex bs 12) `L.shl#` 24#)
+  `L.or#` (limb (BU.unsafeIndex bs 13) `L.shl#` 16#)
+  `L.or#` (limb (BU.unsafeIndex bs 14) `L.shl#` 08#)
+  `L.or#` (limb (BU.unsafeIndex bs 15))
+{-# INLINABLE unsafe_word1 #-}
+
+-- unsafely extract the third 64-bit word from a big-endian-encoded bytestring
+unsafe_word2 :: BS.ByteString -> Limb
+unsafe_word2 bs =
+          (limb (BU.unsafeIndex bs 16) `L.shl#` 56#)
+  `L.or#` (limb (BU.unsafeIndex bs 17) `L.shl#` 48#)
+  `L.or#` (limb (BU.unsafeIndex bs 18) `L.shl#` 40#)
+  `L.or#` (limb (BU.unsafeIndex bs 19) `L.shl#` 32#)
+  `L.or#` (limb (BU.unsafeIndex bs 20) `L.shl#` 24#)
+  `L.or#` (limb (BU.unsafeIndex bs 21) `L.shl#` 16#)
+  `L.or#` (limb (BU.unsafeIndex bs 22) `L.shl#` 08#)
+  `L.or#` (limb (BU.unsafeIndex bs 23))
+{-# INLINABLE unsafe_word2 #-}
+
+-- unsafely extract the fourth 64-bit word from a big-endian-encoded bytestring
+unsafe_word3 :: BS.ByteString -> Limb
+unsafe_word3 bs =
+          (limb (BU.unsafeIndex bs 24) `L.shl#` 56#)
+  `L.or#` (limb (BU.unsafeIndex bs 25) `L.shl#` 48#)
+  `L.or#` (limb (BU.unsafeIndex bs 26) `L.shl#` 40#)
+  `L.or#` (limb (BU.unsafeIndex bs 27) `L.shl#` 32#)
+  `L.or#` (limb (BU.unsafeIndex bs 28) `L.shl#` 24#)
+  `L.or#` (limb (BU.unsafeIndex bs 29) `L.shl#` 16#)
+  `L.or#` (limb (BU.unsafeIndex bs 30) `L.shl#` 08#)
+  `L.or#` (limb (BU.unsafeIndex bs 31))
+{-# INLINABLE unsafe_word3 #-}
+
+-- 256-bit big-endian bytestring decoding. the input size is not checked!
+unsafe_roll32 :: BS.ByteString -> Wider
+unsafe_roll32 bs =
+  let !w0 = unsafe_word0 bs
+      !w1 = unsafe_word1 bs
+      !w2 = unsafe_word2 bs
+      !w3 = unsafe_word3 bs
+  in  Wider (# w3, w2, w1, w0 #)
+{-# INLINABLE unsafe_roll32 #-}
 
 -- arbitrary-size big-endian bytestring decoding
-roll :: BS.ByteString -> Integer
+roll :: BS.ByteString -> Wider
 roll = BS.foldl' alg 0 where
-  alg !a (fi -> !b) = (a `I.integerShiftL` 8) `I.integerOr` b
+  alg !a (word8_to_wider -> !b) = (a `W.shl_limb` 8) `W.or` b
+{-# INLINABLE roll #-}
 
--- /Note:/ there can be substantial differences in execution time
--- when this function is called with "extreme" inputs. For example: a
--- bytestring consisting entirely of 0x00 bytes will parse more quickly
--- than one consisting of entirely 0xFF bytes. For appropriately-random
--- inputs, timings should be indistinguishable.
---
--- 256-bit big-endian bytestring decoding. the input size is not checked!
-roll32 :: BS.ByteString -> Integer
-roll32 bs = go (0 :: Word64) (0 :: Word64) (0 :: Word64) (0 :: Word64) 0 where
-  go !acc0 !acc1 !acc2 !acc3 !j
-    | j == 32  =
-            (fi acc0 `B.unsafeShiftL` 192)
-        .|. (fi acc1 `B.unsafeShiftL` 128)
-        .|. (fi acc2 `B.unsafeShiftL` 64)
-        .|. fi acc3
-    | j < 8    =
-        let b = fi (BU.unsafeIndex bs j)
-        in  go ((acc0 `B.unsafeShiftL` 8) .|. b) acc1 acc2 acc3 (j + 1)
-    | j < 16   =
-        let b = fi (BU.unsafeIndex bs j)
-        in go acc0 ((acc1 `B.unsafeShiftL` 8) .|. b) acc2 acc3 (j + 1)
-    | j < 24   =
-        let b = fi (BU.unsafeIndex bs j)
-        in go acc0 acc1 ((acc2 `B.unsafeShiftL` 8) .|. b) acc3 (j + 1)
-    | otherwise =
-        let b = fi (BU.unsafeIndex bs j)
-        in go acc0 acc1 acc2 ((acc3 `B.unsafeShiftL` 8) .|. b) (j + 1)
-{-# INLINE roll32 #-}
+-- 256-bit big-endian bytestring encoding
+unroll32 :: Wider -> BS.ByteString
+unroll32 (Wider (# w0, w1, w2, w3 #)) =
+  BI.unsafeCreate 32 $ \ptr -> do
+    -- w0
+    Storable.pokeByteOff ptr 00 (word8s w3 56#)
+    Storable.pokeByteOff ptr 01 (word8s w3 48#)
+    Storable.pokeByteOff ptr 02 (word8s w3 40#)
+    Storable.pokeByteOff ptr 03 (word8s w3 32#)
+    Storable.pokeByteOff ptr 04 (word8s w3 24#)
+    Storable.pokeByteOff ptr 05 (word8s w3 16#)
+    Storable.pokeByteOff ptr 06 (word8s w3 08#)
+    Storable.pokeByteOff ptr 07 (word8 w3)
+    -- w1
+    Storable.pokeByteOff ptr 08 (word8s w2 56#)
+    Storable.pokeByteOff ptr 09 (word8s w2 48#)
+    Storable.pokeByteOff ptr 10 (word8s w2 40#)
+    Storable.pokeByteOff ptr 11 (word8s w2 32#)
+    Storable.pokeByteOff ptr 12 (word8s w2 24#)
+    Storable.pokeByteOff ptr 13 (word8s w2 16#)
+    Storable.pokeByteOff ptr 14 (word8s w2 08#)
+    Storable.pokeByteOff ptr 15 (word8 w2)
+    -- w2
+    Storable.pokeByteOff ptr 16 (word8s w1 56#)
+    Storable.pokeByteOff ptr 17 (word8s w1 48#)
+    Storable.pokeByteOff ptr 18 (word8s w1 40#)
+    Storable.pokeByteOff ptr 19 (word8s w1 32#)
+    Storable.pokeByteOff ptr 20 (word8s w1 24#)
+    Storable.pokeByteOff ptr 21 (word8s w1 16#)
+    Storable.pokeByteOff ptr 22 (word8s w1 08#)
+    Storable.pokeByteOff ptr 23 (word8 w1)
+    -- w3
+    Storable.pokeByteOff ptr 24 (word8s w0 56#)
+    Storable.pokeByteOff ptr 25 (word8s w0 48#)
+    Storable.pokeByteOff ptr 26 (word8s w0 40#)
+    Storable.pokeByteOff ptr 27 (word8s w0 32#)
+    Storable.pokeByteOff ptr 28 (word8s w0 24#)
+    Storable.pokeByteOff ptr 29 (word8s w0 16#)
+    Storable.pokeByteOff ptr 30 (word8s w0 08#)
+    Storable.pokeByteOff ptr 31 (word8 w0)
+{-# INLINABLE unroll32 #-}
 
--- this "looks" inefficient due to the call to reverse, but it's
--- actually really fast
+-- cheeky montgomery-assisted modQ
+modQ :: Wider -> Wider
+modQ = S.from . S.to
+{-# INLINABLE modQ #-}
 
--- big-endian bytestring encoding
-unroll :: Integer -> BS.ByteString
-unroll i = case i of
-    0 -> BS.singleton 0
-    _ -> BS.reverse $ BS.unfoldr step i
-  where
-    step 0 = Nothing
-    step m = Just (fi m, m `I.integerShiftR` 8)
+-- bytewise xor
+xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
+xor = BS.packZipWith B.xor
 
--- big-endian bytestring encoding for 256-bit ints, left-padding with
--- zeros if necessary. the size of the integer is not checked.
-unroll32 :: Integer -> BS.ByteString
-unroll32 (unroll -> u)
-    | l < 32 = BS.replicate (32 - l) 0 <> u
-    | otherwise = u
-  where
-    l = BS.length u
-
--- (bip0340) return point with x coordinate == x and with even y coordinate
-lift :: Integer -> Maybe Affine
-lift x = do
-  guard (fe x)
-  let c = remP (modexp x 3 (fi _CURVE_P) + 7) -- modexp always nonnegative
-      e = (_CURVE_P + 1) `I.integerQuot` 4
-      y = modexp c (fi e) (fi _CURVE_P)
-      y_p | B.testBit y 0 = _CURVE_P - y
-          | otherwise = y
-  guard (c == modexp y 2 (fi _CURVE_P))
-  pure $! Affine (C.to (W.to x)) (C.to (W.to y_p))
-
--- -- coordinate systems & transformations ---------------------------------------
-
--- curve point, affine coordinates
-data Affine = Affine !C.Montgomery !C.Montgomery
-  deriving stock (Show, Generic)
-
-instance Eq Affine where
-  (==) (Affine (C.Montgomery x1) (C.Montgomery y1))
-       (Affine (C.Montgomery x2) (C.Montgomery y2)) =
-    CT.decide $
-      CT.and_c# (CT.ct_eq_wider# x1 x2) (CT.ct_eq_wider# y1 y2)
-
--- curve point, projective coordinates
-data Projective = Projective {
-    px :: !C.Montgomery
-  , py :: !C.Montgomery
-  , pz :: !C.Montgomery
-  }
-  deriving stock (Show, Generic)
-
-instance Eq Projective where
-  Projective ax ay az == Projective bx by bz =
-    let !(C.Montgomery x1z2) = ax * bz
-        !(C.Montgomery x2z1) = bx * az
-        !(C.Montgomery y1z2) = ay * bz
-        !(C.Montgomery y2z1) = by * az
-    in  CT.decide $
-          CT.and_c# (CT.ct_eq_wider# x1z2 x2z1) (CT.ct_eq_wider# y1z2 y2z1)
-
--- | An ECC-flavoured alias for a secp256k1 point.
-type Pub = Projective
-
--- Convert to affine coordinates.
-affine :: Projective -> Affine
-affine p@(Projective x y z)
-  | p == _CURVE_ZERO = Affine 0 0
-  | z == 1           = Affine x y
-  | otherwise  =
-      let !iz = C.inv z
-      in  Affine (x * iz) (y * iz)
-
-from_montgomery :: Affine -> Pair Integer Integer
-from_montgomery (Affine (C.retr -> x) (C.retr -> y)) =
-  Pair (W.from x) (W.from y)
-
--- Convert to projective coordinates.
-projective :: Affine -> Projective
-projective p@(Affine x y)
-  | p == Affine 0 0 = _CURVE_ZERO
-  | otherwise = Projective x y 1
-
--- Point is valid
-valid :: Projective -> Bool
-valid p = case affine p of
-  Affine (W.from . C.retr -> x) (W.from . C.retr -> y)
-    | not (fe x) || not (fe y) -> False
-    | modP (y * y) /= weierstrass x -> False
-    | otherwise -> True
-
--- -- curve parameters -----------------------------------------------------------
--- -- see https://www.secg.org/sec2-v2.pdf for parameter specs
---
--- -- ~ 2^256 - 2^32 - 2^9 - 2^8 - 2^7 - 2^6 - 2^4 - 1
+-- constants ------------------------------------------------------------------
 
 -- | secp256k1 field prime.
-_CURVE_P :: Integer
+_CURVE_P :: Wider
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
 -- | secp256k1 group order.
-_CURVE_Q :: Integer
+_CURVE_Q :: Wider
 _CURVE_Q = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+-- | half of the secp256k1 group order.
+_CURVE_QH :: Wider
+_CURVE_QH = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0
 
 -- bitlength of group order
 --
@@ -293,29 +301,81 @@ _CURVE_Q_BYTES :: Int
 _CURVE_Q_BYTES = 32
 
 -- secp256k1 weierstrass form, /b/ coefficient
-_CURVE_B :: Integer
+_CURVE_B :: Wider
 _CURVE_B = 7
 
--- secp256k1 weierstrass form, /b/ coefficient.
+-- secp256k1 weierstrass form, /b/ coefficient, montgomery form
 _CURVE_Bm :: C.Montgomery
 _CURVE_Bm = 7
 
--- secp256k1 weierstrass form, /b/ coefficient.
+-- _CURVE_Bm * 3
 _CURVE_Bm3 :: C.Montgomery
-_CURVE_Bm3 = _CURVE_Bm * 3
+_CURVE_Bm3 = 21
 
--- ~ parse_point . B16.decode $
---     "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
+-- Is field element?
+fe :: Wider -> Bool
+fe n = case W.cmp n _CURVE_P of
+  LT -> True
+  _  -> False
+{-# INLINE fe #-}
+
+-- Is group element?
+ge :: Wider -> Bool
+ge n = case W.cmp n _CURVE_Q of
+  LT -> True
+  _  -> False
+{-# INLINE ge #-}
+
+-- curve points ---------------------------------------------------------------
+
+-- curve point, affine coordinates
+data Affine = Affine !C.Montgomery !C.Montgomery
+  deriving stock (Show, Generic)
+
+-- curve point, projective coordinates
+data Projective = Projective {
+    px :: !C.Montgomery
+  , py :: !C.Montgomery
+  , pz :: !C.Montgomery
+  }
+  deriving stock (Show, Generic)
+
+instance Eq Projective where
+  Projective ax ay az == Projective bx by bz =
+    let !x1z2 = ax * bz
+        !x2z1 = bx * az
+        !y1z2 = ay * bz
+        !y2z1 = by * az
+    in  CT.decide (CT.and# (C.eq x1z2 x2z1) (C.eq y1z2 y2z1))
+
+-- | An ECC-flavoured alias for a secp256k1 point.
+type Pub = Projective
+
+-- Convert to affine coordinates.
+affine :: Projective -> Affine
+affine = \case
+  Projective 0 1 0 -> Affine 0 0
+  Projective x y 1 -> Affine x y
+  Projective x y z ->
+    let !iz = C.inv z
+    in  Affine (x * iz) (y * iz)
+{-# INLINABLE affine #-}
+
+-- Convert to projective coordinates.
+projective :: Affine -> Projective
+projective = \case
+  Affine 0 0 -> _CURVE_ZERO
+  Affine x y -> Projective x y 1
 
 -- | secp256k1 generator point.
 _CURVE_G :: Projective
 _CURVE_G = Projective x y C.one where
   !x = C.Montgomery
-    (# 15507633332195041431##,  2530505477788034779##
-    ,  10925531211367256732##, 11061375339145502536## #)
+    (# Limb 15507633332195041431##, Limb  2530505477788034779##
+    ,  Limb 10925531211367256732##, Limb 11061375339145502536## #)
   !y = C.Montgomery
-    (# 12780836216951778274##, 10231155108014310989##
-    ,  8121878653926228278##, 14933801261141951190## #)
+    (# Limb 12780836216951778274##, Limb 10231155108014310989##
+    ,  Limb 8121878653926228278##,  Limb 14933801261141951190## #)
 
 -- | secp256k1 zero point, point at infinity, or monoidal identity.
 _CURVE_ZERO :: Projective
@@ -326,71 +386,44 @@ _ZERO :: Projective
 _ZERO = Projective 0 1 0
 {-# DEPRECATED _ZERO "use _CURVE_ZERO instead" #-}
 
--- secp256k1 in prime order j-invariant 0 form (i.e. a == 0).
-weierstrass :: Integer -> Integer
-weierstrass x = remP (remP (x * x) * x + _CURVE_B)
+-- secp256k1 in short weierstrass form (y ^ 2 = x ^ 3 + 7)
+weierstrass :: C.Montgomery -> C.Montgomery
+weierstrass x = C.sqr x * x + _CURVE_Bm
 {-# INLINE weierstrass #-}
 
--- -- field, group operations ----------------------------------------------------
+-- Point is valid
+valid :: Projective -> Bool
+valid p = case affine p of
+  Affine x y
+    | C.sqr y /= weierstrass x -> False
+    | otherwise -> True
 
--- Division modulo secp256k1 field prime.
-modP :: Integer -> Integer
-modP a = I.integerMod a _CURVE_P
-{-# INLINE modP #-}
-
--- Division modulo secp256k1 field prime, when argument is nonnegative.
--- (more efficient than modP)
-remP :: Integer -> Integer
-remP a = I.integerRem a _CURVE_P
-{-# INLINE remP #-}
-
--- -- | Division modulo secp256k1 group order.
--- modQ :: Integer -> Integer
--- modQ a = I.integerMod a _CURVE_Q
--- {-# INLINE modQ #-}
+-- (bip0340) return point with x coordinate == x and with even y coordinate
 --
--- -- | Division modulo secp256k1 group order, when argument is nonnegative.
--- remQ :: Integer -> Integer
--- remQ a = I.integerRem a _CURVE_Q
--- {-# INLINE remQ #-}
+-- conceptually:
+--   y ^ 2 = x ^ 3 + 7
+--   y     = "+-" sqrt (x ^ 3 + 7)
+--     (n.b. for solution y, p - y is also a solution)
+--   y + (p - y) = p (odd)
+--     (n.b. sum is odd, so one of y and p - y must be odd, and the other even)
+--   if y even, return (x, y)
+--   else,      return (x, p - y)
+lift_vartime :: C.Montgomery -> Maybe Affine
+lift_vartime x = do
+  let !c = weierstrass x
+  !y <- C.sqrt c
+  let !y_e | C.odd y   = negate y
+           | otherwise = y
+  guard (C.sqr y_e == c)
+  pure $! Affine x y_e
 
--- Is field element?
-fe :: Integer -> Bool
-fe n = 0 < n && n < _CURVE_P
-{-# INLINE fe #-}
+even_y_vartime :: Projective -> Projective
+even_y_vartime p = case affine p of
+  Affine _ (C.retr -> y)
+    | W.odd y  -> neg p
+    | otherwise -> p
 
--- Is group element?
-ge :: Integer -> Bool
-ge n = 0 < n && n < _CURVE_Q
-{-# INLINE ge #-}
-
--- Square root (Shanks-Tonelli) modulo secp256k1 field prime.
---
--- For a, return x such that a = x x mod _CURVE_P.
-modsqrtP :: Integer -> Maybe Integer
-modsqrtP n = runST $ do
-  r   <- newSTRef 1
-  num <- newSTRef n
-  e   <- newSTRef ((_CURVE_P + 1) `I.integerQuot` 4)
-
-  let loop = do
-        ev <- readSTRef e
-        when (ev > 0) $ do
-          when (I.integerTestBit ev 0) $ do
-            numv <- readSTRef num
-            modifySTRef' r (\rv -> remP (rv * numv))
-          modifySTRef' num (\numv -> remP (numv * numv))
-          modifySTRef' e (`I.integerShiftR` 1)
-          loop
-
-  loop
-  rv  <- readSTRef r
-
-  pure $ do
-    guard (remP (rv * rv) == n)
-    Just $! rv
-
--- ec point operations --------------------------------------------------------
+-- ec arithmetic --------------------------------------------------------------
 
 -- Negate secp256k1 point.
 neg :: Projective -> Projective
@@ -399,7 +432,6 @@ neg (Projective x y z) = Projective x (negate y) z
 -- Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
 add p q@(Projective _ _ z)
-  | p == q = double p        -- algo 9
   | z == 1 = add_mixed p q   -- algo 8
   | otherwise = add_proj p q -- algo 7
 
@@ -571,43 +603,43 @@ double (Projective x y z) = runST $ do
   Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
 
 -- Timing-safe scalar multiplication of secp256k1 points.
-mul :: Projective -> W.Wider -> Maybe Projective
-mul p sec@(W.Wider _SECRET) = do
-    guard (ge (W.from sec))
-    pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p _SECRET
+mul :: Projective -> Wider -> Maybe Projective
+mul p sec = do
+    guard (ge sec)
+    pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p sec
   where
-    loop !j !acc !f !d !m
+    loop !j !acc !f !d !_SECRET
       | j == _CURVE_Q_BITS = acc
       | otherwise =
-          let nd = double d
-              !(# nm, lsb_set #) = W.shr1_c# m
-          in  if   CT.decide lsb_set
+          let !nd = double d
+              !(!nm, !lsb_set) = W.shr1_c _SECRET -- constant-time shift
+          in  if   lsb_set
               then loop (succ j) (add acc d) f nd nm
               else loop (succ j) acc (add f d) nd nm
 {-# INLINE mul #-}
 
--- -- Timing-unsafe scalar multiplication of secp256k1 points.
--- --
--- -- Don't use this function if the scalar could potentially be a secret.
--- mul_unsafe :: Projective -> Integer -> Maybe Projective
--- mul_unsafe p n
---     | n == 0 = pure $! _CURVE_ZERO
---     | not (ge n) = Nothing
---     | otherwise  = pure $! loop _CURVE_ZERO p n
---   where
---     loop !r !d m
---       | m <= 0 = r
---       | otherwise =
---           let nd = double d
---               nm = I.integerShiftR m 1
---               nr = if I.integerTestBit m 0 then add r d else r
---           in  loop nr nd nm
+-- Timing-unsafe scalar multiplication of secp256k1 points.
+--
+-- Don't use this function if the scalar could potentially be a secret.
+mul_unsafe :: Projective -> Wider -> Maybe Projective
+mul_unsafe p = \case
+    Zero -> pure _CURVE_ZERO
+    n | not (ge n) -> Nothing
+      | otherwise  -> pure $! loop _CURVE_ZERO p n
+  where
+    loop !r !d = \case
+      Zero -> r
+      m ->
+        let !nd = double d
+            !(!nm, !lsb_set) = W.shr1_c m
+            !nr = if lsb_set then add r d else r
+        in  loop nr nd nm
 
 -- | Precomputed multiples of the secp256k1 base or generator point.
 data Context = Context {
     ctxW     :: {-# UNPACK #-} !Int
   , ctxArray :: !(A.Array Projective)
-  } deriving (Eq, Generic)
+  } deriving Generic
 
 instance Show Context where
   show Context {} = "<secp256k1 context>"
@@ -623,9 +655,6 @@ instance Show Context where
 --   >>> sign_schnorr' tex sec msg aux
 precompute :: Context
 precompute = _precompute 8
-
--- dumb strict pair
-data Pair a b = Pair !a !b
 
 -- translation of noble-secp256k1's 'precompute'
 _precompute :: Int -> Context
@@ -649,9 +678,9 @@ _precompute ctxW = Context {..} where
         let nb = add b p
         in  loop_j p (nb : acc) nb (succ j)
 
--- -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
+-- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
 -- secp256k1 points.
-mul_wnaf :: Context -> Integer -> Maybe Projective
+mul_wnaf :: Context -> Wider -> Maybe Projective
 mul_wnaf Context {..} _SECRET = do
     guard (ge _SECRET)
     pure $! loop 0 _CURVE_ZERO _CURVE_G _SECRET
@@ -664,24 +693,14 @@ mul_wnaf Context {..} _SECRET = do
     loop !w !acc !f !n
       | w == wins = acc
       | otherwise =
-          let !off0 = w * fi wsize
+          let !off0 = w * wsize
 
-              -- XX branches on secret data
-
-              -- b0    = n & (m-1)
-              -- carry = (b0 >> (w-1)) & 1                -- 0 or 1
-              -- d     = b0 - carry*m                     -- signed in [-(m-1), ..., +(m-1)]
-              -- n'    = (n >> w) + carry
-              !b0 = n `I.integerAnd` mask
-              !n0 = n `I.integerShiftR` fi ctxW
+              !b0 = wider_to_int n .&. mask
+              !n0 = n `W.shr_limb` ctxW
 
               !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
                             | otherwise  = Pair b0 n0
 
-              -- XX branches on secret data
-
-              -- sgn  = maskbit(d < 0)        -- 0x..FF if d<0 else 0x..00
-              -- ad   = abs(d) = (d ^ sgn) - sgn
               !c0 = B.testBit w 0
               !c1 = b1 < 0
 
@@ -705,7 +724,7 @@ mul_wnaf Context {..} _SECRET = do
 --   >>> sk <- fmap parse_int256 (E.getEntropy 32)
 --   >>> derive_pub sk
 --   Just "<secp256k1 point>"
-derive_pub :: W.Wider -> Maybe Pub
+derive_pub :: Wider -> Maybe Pub
 derive_pub = mul _CURVE_G
 {-# NOINLINE derive_pub #-}
 
@@ -717,22 +736,21 @@ derive_pub = mul _CURVE_G
 --   >>> let !tex = precompute
 --   >>> derive_pub' tex sk
 --   Just "<secp256k1 point>"
-derive_pub' :: Context -> Integer -> Maybe Pub
+derive_pub' :: Context -> Wider -> Maybe Pub
 derive_pub' = mul_wnaf
 {-# NOINLINE derive_pub' #-}
 
 -- parsing --------------------------------------------------------------------
 
--- | Parse a positive 256-bit 'Integer', /e.g./ a Schnorr or ECDSA
---   secret key.
+-- | Parse a 'Wider', /e.g./ a Schnorr or ECDSA secret key.
 --
 --   >>> import qualified Data.ByteString as BS
 --   >>> parse_int256 (BS.replicate 32 0xFF)
 --   Just <2^256 - 1>
-parse_int256 :: BS.ByteString -> Maybe Integer
+parse_int256 :: BS.ByteString -> Maybe Wider
 parse_int256 bs = do
   guard (BS.length bs == 32)
-  pure $! roll32 bs
+  pure $! unsafe_roll32 bs
 
 -- | Parse compressed secp256k1 point (33 bytes), uncompressed point (65
 --   bytes), or BIP0340-style point (32 bytes).
@@ -758,498 +776,56 @@ parse_point bs
 
 -- input is guaranteed to be 32B in length
 _parse_bip0340 :: BS.ByteString -> Maybe Projective
-_parse_bip0340 = fmap projective . lift . roll32
+_parse_bip0340 = fmap projective . lift_vartime . C.to . unsafe_roll32
 
 -- bytestring input is guaranteed to be 32B in length
 _parse_compressed :: Word8 -> BS.ByteString -> Maybe Projective
-_parse_compressed h (roll32 -> x)
+_parse_compressed h (unsafe_roll32 -> x)
   | h /= 0x02 && h /= 0x03 = Nothing
   | not (fe x) = Nothing
   | otherwise = do
-      y <- modsqrtP (weierstrass x)
-      let yodd = I.integerTestBit y 0
-          hodd = B.testBit h 0
+      let !mx = C.to x
+      !my <- C.sqrt (weierstrass mx)
+      let !(W.Wider (# Limb w, _, _, _ #)) = C.retr my
+          !yodd = B.testBit (GHC.Word.W# w) 0
+          !hodd = B.testBit h 0
       pure $!
         if   hodd /= yodd
-        then Projective (C.to (W.to x)) (C.to (W.to (modP (negate y)))) 1
-        else Projective (C.to (W.to x)) (C.to (W.to y)) 1
+        then Projective mx (negate my) 1
+        else Projective mx my 1
 
 -- bytestring input is guaranteed to be 64B in length
 _parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
-_parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
-  | h /= 0x04 = Nothing
-  | otherwise = do
-      let p = Projective (C.to (W.to x)) (C.to (W.to y)) 1
-      guard (valid p)
-      pure $! p
+_parse_uncompressed h bs = do
+  let (unsafe_roll32 -> x, unsafe_roll32 -> y) = BS.splitAt _CURVE_Q_BYTES bs
+  guard (h /= 0x04)
+  let !p = Projective (C.to x) (C.to y) 1
+  guard (valid p)
+  pure $! p
 
--- -- | Parse an ECDSA signature encoded in 64-byte "compact" form.
--- --
--- --   >>> parse_sig <64-byte compact signature>
--- --   Just "<ecdsa signature>"
--- parse_sig :: BS.ByteString -> Maybe ECDSA
--- parse_sig bs
---   | BS.length bs /= 64 = Nothing
---   | otherwise = pure $
---       let (roll -> r, roll -> s) = BS.splitAt 32 bs
---       in  ECDSA r s
+-- | Parse an ECDSA signature encoded in 64-byte "compact" form.
 --
--- -- serializing ----------------------------------------------------------------
+--   >>> parse_sig <64-byte compact signature>
+--   Just "<ecdsa signature>"
+parse_sig :: BS.ByteString -> Maybe ECDSA
+parse_sig bs
+  | BS.length bs /= 64 = Nothing
+  | otherwise = pure $
+      let (roll -> r, roll -> s) = BS.splitAt 32 bs
+      in  ECDSA r s
+
+-- serializing ----------------------------------------------------------------
+
+-- | Serialize a secp256k1 point in 33-byte compressed form.
 --
--- -- | Serialize a secp256k1 point in 33-byte compressed form.
--- --
--- --   >>> serialize_point pub
--- --   "<33-byte compressed point>"
--- serialize_point :: Projective -> BS.ByteString
--- serialize_point (affine -> Affine x y) = BS.cons b (unroll32 x) where
---   b | I.integerTestBit y 0 = 0x03
---     | otherwise = 0x02
---
--- -- schnorr --------------------------------------------------------------------
--- -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
---
--- -- | Create a 64-byte Schnorr signature for the provided message, using
--- --   the provided secret key.
--- --
--- --   BIP0340 recommends that 32 bytes of fresh auxiliary entropy be
--- --   generated and added at signing time as additional protection
--- --   against side-channel attacks (namely, to thwart so-called "fault
--- --   injection" attacks). This entropy is /supplemental/ to security,
--- --   and the cryptographic security of the signature scheme itself does
--- --   not rely on it, so it is not strictly required; 32 zero bytes can
--- --   be used in its stead (and can be supplied via 'mempty').
--- --
--- --   >>> import qualified System.Entropy as E
--- --   >>> aux <- E.getEntropy 32
--- --   >>> sign_schnorr sec msg aux
--- --   Just "<64-byte schnorr signature>"
--- sign_schnorr
---   :: Integer        -- ^ secret key
---   -> BS.ByteString  -- ^ message
---   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
---   -> Maybe BS.ByteString  -- ^ 64-byte Schnorr signature
--- sign_schnorr = _sign_schnorr (mul _CURVE_G)
---
--- -- | The same as 'sign_schnorr', except uses a 'Context' to optimise
--- --   internal calculations.
--- --
--- --   You can expect about a 2x performance increase when using this
--- --   function, compared to 'sign_schnorr'.
--- --
--- --   >>> import qualified System.Entropy as E
--- --   >>> aux <- E.getEntropy 32
--- --   >>> let !tex = precompute
--- --   >>> sign_schnorr' tex sec msg aux
--- --   Just "<64-byte schnorr signature>"
--- sign_schnorr'
---   :: Context        -- ^ secp256k1 context
---   -> Integer        -- ^ secret key
---   -> BS.ByteString  -- ^ message
---   -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
---   -> Maybe BS.ByteString  -- ^ 64-byte Schnorr signature
--- sign_schnorr' tex = _sign_schnorr (mul_wnaf tex)
---
--- _sign_schnorr
---   :: (Integer -> Maybe Projective)  -- partially-applied multiplication function
---   -> Integer                  -- secret key
---   -> BS.ByteString            -- message
---   -> BS.ByteString            -- 32 bytes of auxilliary random data
---   -> Maybe BS.ByteString
--- _sign_schnorr _mul _SECRET m a = do
---   p_proj <- _mul _SECRET
---   let Affine x_p y_p = affine p_proj
---       d | I.integerTestBit y_p 0 = _CURVE_Q - _SECRET
---         | otherwise = _SECRET
---
---       bytes_d = unroll32 d
---       h_a = hash_aux a
---       t = xor bytes_d h_a
---
---       bytes_p = unroll32 x_p
---       rand = hash_nonce (t <> bytes_p <> m)
---
---       k' = modQ (roll32 rand)
---
---   if   k' == 0 -- negligible probability
---   then Nothing
---   else do
---     pt <- _mul k'
---     let Affine x_r y_r = affine pt
---         k | I.integerTestBit y_r 0 = _CURVE_Q - k'
---           | otherwise = k'
---
---         bytes_r = unroll32 x_r
---         e = modQ . roll32 . hash_challenge
---           $ bytes_r <> bytes_p <> m
---
---         bytes_ked = unroll32 (modQ (k + e * d))
---
---         sig = bytes_r <> bytes_ked
---
---     guard (verify_schnorr m p_proj sig)
---     pure $! sig
--- {-# INLINE _sign_schnorr #-}
---
--- -- | Verify a 64-byte Schnorr signature for the provided message with
--- --   the supplied public key.
--- --
--- --   >>> verify_schnorr msg pub <valid signature>
--- --   True
--- --   >>> verify_schnorr msg pub <invalid signature>
--- --   False
--- verify_schnorr
---   :: BS.ByteString  -- ^ message
---   -> Pub            -- ^ public key
---   -> BS.ByteString  -- ^ 64-byte Schnorr signature
---   -> Bool
--- verify_schnorr = _verify_schnorr (mul_unsafe _CURVE_G)
---
--- -- | The same as 'verify_schnorr', except uses a 'Context' to optimise
--- --   internal calculations.
--- --
--- --   You can expect about a 1.5x performance increase when using this
--- --   function, compared to 'verify_schnorr'.
--- --
--- --   >>> let !tex = precompute
--- --   >>> verify_schnorr' tex msg pub <valid signature>
--- --   True
--- --   >>> verify_schnorr' tex msg pub <invalid signature>
--- --   False
--- verify_schnorr'
---   :: Context        -- ^ secp256k1 context
---   -> BS.ByteString  -- ^ message
---   -> Pub            -- ^ public key
---   -> BS.ByteString  -- ^ 64-byte Schnorr signature
---   -> Bool
--- verify_schnorr' tex = _verify_schnorr (mul_wnaf tex)
---
--- _verify_schnorr
---   :: (Integer -> Maybe Projective) -- partially-applied multiplication function
---   -> BS.ByteString
---   -> Pub
---   -> BS.ByteString
---   -> Bool
--- _verify_schnorr _mul m (affine -> Affine x_p _) sig
---   | BS.length sig /= 64 = False
---   | otherwise = M.isJust $ do
---       capP@(Affine x_P _) <- lift x_p
---       let (roll32 -> r, roll32 -> s) = BS.splitAt 32 sig
---       guard (r < _CURVE_P && s < _CURVE_Q)
---       let e = modQ . roll32 $ hash_challenge
---                 (unroll32 r <> unroll32 x_P <> m)
---       pt0 <- _mul s
---       pt1 <- mul_unsafe (projective capP) e
---       let dif = add pt0 (neg pt1)
---       guard (dif /= _CURVE_ZERO)
---       let Affine x_R y_R = affine dif
---       guard $ not (I.integerTestBit y_R 0 || x_R /= r)
--- {-# INLINE _verify_schnorr #-}
---
--- -- hardcoded tag of BIP0340/aux
--- --
--- -- \x -> let h = SHA256.hash "BIP0340/aux"
--- --       in  SHA256.hash (h <> h <> x)
--- hash_aux :: BS.ByteString -> BS.ByteString
--- hash_aux x = SHA256.hash $
---   "\241\239N^\192c\202\218m\148\202\250\157\152~\160i&X9\236\193\US\151-w\165.\216\193\204\144\241\239N^\192c\202\218m\148\202\250\157\152~\160i&X9\236\193\US\151-w\165.\216\193\204\144" <> x
--- {-# INLINE hash_aux #-}
---
--- -- hardcoded tag of BIP0340/nonce
--- hash_nonce :: BS.ByteString -> BS.ByteString
--- hash_nonce x = SHA256.hash $
---   "\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/" <> x
--- {-# INLINE hash_nonce #-}
---
--- -- hardcoded tag of BIP0340/challenge
--- hash_challenge :: BS.ByteString -> BS.ByteString
--- hash_challenge x = SHA256.hash $
---   "{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|" <> x
--- {-# INLINE hash_challenge #-}
---
--- -- ecdsa ----------------------------------------------------------------------
--- -- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
---
--- -- RFC6979 2.3.2
--- bits2int :: BS.ByteString -> Integer
--- bits2int bs =
---   let (fi -> blen) = BS.length bs * 8
---       (fi -> qlen) = _CURVE_Q_BITS
---       del = blen - qlen
---   in  if   del > 0
---       then roll bs `I.integerShiftR` del
---       else roll bs
---
--- -- RFC6979 2.3.3
--- int2octets :: Integer -> BS.ByteString
--- int2octets i = pad (unroll i) where
---   pad bs
---     | BS.length bs < _CURVE_Q_BYTES = pad (BS.cons 0 bs)
---     | otherwise = bs
---
--- -- RFC6979 2.3.4
--- bits2octets :: BS.ByteString -> BS.ByteString
--- bits2octets bs =
---   let z1 = bits2int bs
---       z2 = modQ z1
---   in  int2octets z2
---
--- -- | An ECDSA signature.
--- data ECDSA = ECDSA {
---     ecdsa_r :: !Integer
---   , ecdsa_s :: !Integer
---   }
---   deriving (Eq, Generic)
---
--- instance Show ECDSA where
---   show _ = "<ecdsa signature>"
---
--- -- ECDSA signature type.
--- data SigType =
---     LowS
---   | Unrestricted
---   deriving Show
---
--- -- Indicates whether to hash the message or assume it has already been
--- -- hashed.
--- data HashFlag =
---     Hash
---   | NoHash
---   deriving Show
---
--- -- | Produce an ECDSA signature for the provided message, using the
--- --   provided private key.
--- --
--- --   'sign_ecdsa' produces a "low-s" signature, as is commonly required
--- --   in applications using secp256k1. If you need a generic ECDSA
--- --   signature, use 'sign_ecdsa_unrestricted'.
--- --
--- --   >>> sign_ecdsa sec msg
--- --   Just "<ecdsa signature>"
--- sign_ecdsa
---   :: Integer         -- ^ secret key
---   -> BS.ByteString   -- ^ message
---   -> Maybe ECDSA
--- sign_ecdsa = _sign_ecdsa (mul _CURVE_G) LowS Hash
---
--- -- | The same as 'sign_ecdsa', except uses a 'Context' to optimise internal
--- --   calculations.
--- --
--- --   You can expect about a 10x performance increase when using this
--- --   function, compared to 'sign_ecdsa'.
--- --
--- --   >>> let !tex = precompute
--- --   >>> sign_ecdsa' tex sec msg
--- --   Just "<ecdsa signature>"
--- sign_ecdsa'
---   :: Context         -- ^ secp256k1 context
---   -> Integer         -- ^ secret key
---   -> BS.ByteString   -- ^ message
---   -> Maybe ECDSA
--- sign_ecdsa' tex = _sign_ecdsa (mul_wnaf tex) LowS Hash
---
--- -- | Produce an ECDSA signature for the provided message, using the
--- --   provided private key.
--- --
--- --   'sign_ecdsa_unrestricted' produces an unrestricted ECDSA signature,
--- --   which is less common in applications using secp256k1 due to the
--- --   signature's inherent malleability. If you need a conventional
--- --   "low-s" signature, use 'sign_ecdsa'.
--- --
--- --   >>> sign_ecdsa_unrestricted sec msg
--- --   Just "<ecdsa signature>"
--- sign_ecdsa_unrestricted
---   :: Integer        -- ^ secret key
---   -> BS.ByteString  -- ^ message
---   -> Maybe ECDSA
--- sign_ecdsa_unrestricted = _sign_ecdsa (mul _CURVE_G) Unrestricted Hash
---
--- -- | The same as 'sign_ecdsa_unrestricted', except uses a 'Context' to
--- --   optimise internal calculations.
--- --
--- --   You can expect about a 10x performance increase when using this
--- --   function, compared to 'sign_ecdsa_unrestricted'.
--- --
--- --   >>> let !tex = precompute
--- --   >>> sign_ecdsa_unrestricted' tex sec msg
--- --   Just "<ecdsa signature>"
--- sign_ecdsa_unrestricted'
---   :: Context        -- ^ secp256k1 context
---   -> Integer        -- ^ secret key
---   -> BS.ByteString  -- ^ message
---   -> Maybe ECDSA
--- sign_ecdsa_unrestricted' tex = _sign_ecdsa (mul_wnaf tex) Unrestricted Hash
---
--- -- Produce a "low-s" ECDSA signature for the provided message, using
--- -- the provided private key. Assumes that the message has already been
--- -- pre-hashed.
--- --
--- -- (Useful for testing against noble-secp256k1's suite, in which messages
--- -- in the test vectors have already been hashed.)
--- _sign_ecdsa_no_hash
---   :: Integer        -- ^ secret key
---   -> BS.ByteString  -- ^ message digest
---   -> Maybe ECDSA
--- _sign_ecdsa_no_hash = _sign_ecdsa (mul _CURVE_G) LowS NoHash
---
--- _sign_ecdsa_no_hash'
---   :: Context
---   -> Integer
---   -> BS.ByteString
---   -> Maybe ECDSA
--- _sign_ecdsa_no_hash' tex = _sign_ecdsa (mul_wnaf tex) LowS NoHash
---
--- _sign_ecdsa
---   :: (Integer -> Maybe Projective) -- partially-applied multiplication function
---   -> SigType
---   -> HashFlag
---   -> Integer
---   -> BS.ByteString
---   -> Maybe ECDSA
--- _sign_ecdsa _mul ty hf _SECRET m = runST $ do
---     -- RFC6979 sec 3.3a
---     let entropy = int2octets _SECRET
---         nonce   = bits2octets h
---     drbg <- DRBG.new SHA256.hmac entropy nonce mempty
---     -- RFC6979 sec 2.4
---     sign_loop drbg
---   where
---     h = case hf of
---       Hash -> SHA256.hash m
---       NoHash -> m
---
---     h_modQ = remQ (bits2int h) -- bits2int yields nonnegative
---
---     sign_loop g = do
---       k <- gen_k g
---       let mpair = do
---             kg <- _mul k
---             let Affine (modQ -> r) _ = affine kg
---             kinv <- modinv k (fi _CURVE_Q)
---             let s = remQ (remQ (h_modQ + remQ (_SECRET * r)) * kinv)
---             pure $! (r, s)
---       case mpair of
---         Nothing -> pure Nothing
---         Just (r, s)
---           | r == 0 -> sign_loop g -- negligible probability
---           | otherwise ->
---               let !sig = Just $! ECDSA r s
---               in  case ty of
---                     Unrestricted -> pure sig
---                     LowS -> pure (fmap low sig)
--- {-# INLINE _sign_ecdsa #-}
---
--- -- RFC6979 sec 3.3b
--- gen_k :: DRBG.DRBG s -> ST s Integer
--- gen_k g = loop g where
---   loop drbg = do
---     bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
---     let can = bits2int bytes
---     if   can >= _CURVE_Q
---     then loop drbg
---     else pure can
--- {-# INLINE gen_k #-}
---
--- -- Convert an ECDSA signature to low-S form.
--- low :: ECDSA -> ECDSA
--- low (ECDSA r s) = ECDSA r ms where
---   ms
---     | s > B.unsafeShiftR _CURVE_Q 1 = modQ (negate s)
---     | otherwise = s
--- {-# INLINE low #-}
---
--- -- | Verify a "low-s" ECDSA signature for the provided message and
--- --   public key,
--- --
--- --   Fails to verify otherwise-valid "high-s" signatures. If you need to
--- --   verify generic ECDSA signatures, use 'verify_ecdsa_unrestricted'.
--- --
--- --   >>> verify_ecdsa msg pub valid_sig
--- --   True
--- --   >>> verify_ecdsa msg pub invalid_sig
--- --   False
--- verify_ecdsa
---   :: BS.ByteString -- ^ message
---   -> Pub           -- ^ public key
---   -> ECDSA         -- ^ signature
---   -> Bool
--- verify_ecdsa m p sig@(ECDSA _ s)
---   | s > B.unsafeShiftR _CURVE_Q 1 = False
---   | otherwise = verify_ecdsa_unrestricted m p sig
---
--- -- | The same as 'verify_ecdsa', except uses a 'Context' to optimise
--- --   internal calculations.
--- --
--- --   You can expect about a 2x performance increase when using this
--- --   function, compared to 'verify_ecdsa'.
--- --
--- --   >>> let !tex = precompute
--- --   >>> verify_ecdsa' tex msg pub valid_sig
--- --   True
--- --   >>> verify_ecdsa' tex msg pub invalid_sig
--- --   False
--- verify_ecdsa'
---   :: Context       -- ^ secp256k1 context
---   -> BS.ByteString -- ^ message
---   -> Pub           -- ^ public key
---   -> ECDSA         -- ^ signature
---   -> Bool
--- verify_ecdsa' tex m p sig@(ECDSA _ s)
---   | s > B.unsafeShiftR _CURVE_Q 1 = False
---   | otherwise = verify_ecdsa_unrestricted' tex m p sig
---
--- -- | Verify an unrestricted ECDSA signature for the provided message and
--- --   public key.
--- --
--- --   >>> verify_ecdsa_unrestricted msg pub valid_sig
--- --   True
--- --   >>> verify_ecdsa_unrestricted msg pub invalid_sig
--- --   False
--- verify_ecdsa_unrestricted
---   :: BS.ByteString -- ^ message
---   -> Pub           -- ^ public key
---   -> ECDSA         -- ^ signature
---   -> Bool
--- verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_unsafe _CURVE_G)
---
--- -- | The same as 'verify_ecdsa_unrestricted', except uses a 'Context' to
--- --   optimise internal calculations.
--- --
--- --   You can expect about a 2x performance increase when using this
--- --   function, compared to 'verify_ecdsa_unrestricted'.
--- --
--- --   >>> let !tex = precompute
--- --   >>> verify_ecdsa_unrestricted' tex msg pub valid_sig
--- --   True
--- --   >>> verify_ecdsa_unrestricted' tex msg pub invalid_sig
--- --   False
--- verify_ecdsa_unrestricted'
---   :: Context       -- ^ secp256k1 context
---   -> BS.ByteString -- ^ message
---   -> Pub           -- ^ public key
---   -> ECDSA         -- ^ signature
---   -> Bool
--- verify_ecdsa_unrestricted' tex = _verify_ecdsa_unrestricted (mul_wnaf tex)
---
--- _verify_ecdsa_unrestricted
---   :: (Integer -> Maybe Projective) -- partially-applied multiplication function
---   -> BS.ByteString
---   -> Pub
---   -> ECDSA
---   -> Bool
--- _verify_ecdsa_unrestricted _mul (SHA256.hash -> h) p (ECDSA r s) = M.isJust $ do
---   -- SEC1-v2 4.1.4
---   guard (ge r && ge s)
---   let e = remQ (bits2int h)
---   s_inv <- modinv s (fi _CURVE_Q)
---   let u1 = remQ (e * s_inv)
---       u2 = remQ (r * s_inv)
---   pt0 <- _mul u1
---   pt1 <- mul_unsafe p u2
---   let capR = add pt0 pt1
---   guard (capR /= _CURVE_ZERO)
---   let Affine (modQ -> v) _ = affine capR
---   guard (v == r)
--- {-# INLINE _verify_ecdsa_unrestricted #-}
+--   >>> serialize_point pub
+--   "<33-byte compressed point>"
+serialize_point :: Projective -> BS.ByteString
+serialize_point (affine -> Affine (C.from -> x) (C.from -> y)) =
+  let !(Wider (# Limb w, _, _, _ #)) = y
+      !b | B.testBit (GHC.Word.W# w) 0 = 0x03
+         | otherwise = 0x02
+  in  BS.cons b (unroll32 x)
 
 -- ecdh -----------------------------------------------------------------------
 
@@ -1261,8 +837,8 @@ _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
 --   The shared secret is the SHA256 hash of the x-coordinate of the
 --   point obtained by scalar multiplication.
 --
---   >>> let sec_alice = 0x03                   -- contrived
---   >>> let sec_bob   = 2 ^ 128 - 1            -- contrived
+--   >>> let sec_alice = 0x03
+--   >>> let sec_bob   = 2 ^ 128 - 1
 --   >>> let Just pub_alice = derive_pub sec_alice
 --   >>> let Just pub_bob   = derive_pub sec_bob
 --   >>> let secret_as_computed_by_alice = ecdh pub_bob sec_alice
@@ -1271,11 +847,443 @@ _parse_uncompressed h (BS.splitAt _CURVE_Q_BYTES -> (roll32 -> x, roll32 -> y))
 --   True
 ecdh
   :: Projective          -- ^ public key
-  -> W.Wider             -- ^ secret key
+  -> Wider               -- ^ secret key
   -> Maybe BS.ByteString -- ^ shared secret
 ecdh pub _SECRET = do
   pt <- mul pub _SECRET
   guard (pt /= _CURVE_ZERO)
-  let !(Pair x _) = from_montgomery (affine pt)
-  pure $! SHA256.hash (unroll32 x)
+  case affine pt of
+    Affine (C.retr -> x) _ -> pure $! SHA256.hash (unroll32 x)
+
+-- schnorr --------------------------------------------------------------------
+-- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
+
+-- | Create a 64-byte Schnorr signature for the provided message, using
+--   the provided secret key.
+--
+--   BIP0340 recommends that 32 bytes of fresh auxiliary entropy be
+--   generated and added at signing time as additional protection
+--   against side-channel attacks (namely, to thwart so-called "fault
+--   injection" attacks). This entropy is /supplemental/ to security,
+--   and the cryptographic security of the signature scheme itself does
+--   not rely on it, so it is not strictly required; 32 zero bytes can
+--   be used in its stead (and can be supplied via 'mempty').
+--
+--   >>> import qualified System.Entropy as E
+--   >>> aux <- E.getEntropy 32
+--   >>> sign_schnorr sec msg aux
+--   Just "<64-byte schnorr signature>"
+sign_schnorr
+  :: Wider          -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
+  -> Maybe BS.ByteString  -- ^ 64-byte Schnorr signature
+sign_schnorr = _sign_schnorr (mul _CURVE_G)
+
+-- | The same as 'sign_schnorr', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to 'sign_schnorr'.
+--
+--   >>> import qualified System.Entropy as E
+--   >>> aux <- E.getEntropy 32
+--   >>> let !tex = precompute
+--   >>> sign_schnorr' tex sec msg aux
+--   Just "<64-byte schnorr signature>"
+sign_schnorr'
+  :: Context        -- ^ secp256k1 context
+  -> Wider          -- ^ secret key
+  -> BS.ByteString  -- ^ message
+  -> BS.ByteString  -- ^ 32 bytes of auxilliary random data
+  -> Maybe BS.ByteString  -- ^ 64-byte Schnorr signature
+sign_schnorr' tex = _sign_schnorr (mul_wnaf tex)
+
+_sign_schnorr
+  :: (Wider -> Maybe Projective)  -- partially-applied multiplication function
+  -> Wider                        -- secret key
+  -> BS.ByteString                -- message
+  -> BS.ByteString                -- 32 bytes of auxilliary random data
+  -> Maybe BS.ByteString
+_sign_schnorr _mul _SECRET m a = do
+  p <- _mul _SECRET
+  let Affine (C.retr -> x_p) (C.retr -> y_p) = affine p
+      s = S.to _SECRET
+      d | W.odd y_p = negate s
+        | otherwise = s
+      bytes_d = unroll32 (S.retr d)
+      bytes_p = unroll32 x_p
+      t       = xor bytes_d (hash_aux a)
+      rand    = hash_nonce (t <> bytes_p <> m)
+      k'      = S.to (unsafe_roll32 rand)
+  guard (k' /= 0) -- negligible probability
+  pt <- _mul (S.retr k')
+  let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
+      k | W.odd y_r = negate k'
+        | otherwise = k'
+      bytes_r   = unroll32 x_r
+      rand'     = hash_challenge (bytes_r <> bytes_p <> m)
+      e         = S.to (unsafe_roll32 rand')
+      bytes_ked = unroll32 (S.retr (k + e * d))
+      sig       = bytes_r <> bytes_ked
+  guard (verify_schnorr m p sig)
+  pure $! sig
+{-# INLINE _sign_schnorr #-}
+
+-- | Verify a 64-byte Schnorr signature for the provided message with
+--   the supplied public key.
+--
+--   >>> verify_schnorr msg pub <valid signature>
+--   True
+--   >>> verify_schnorr msg pub <invalid signature>
+--   False
+verify_schnorr
+  :: BS.ByteString  -- ^ message
+  -> Pub            -- ^ public key
+  -> BS.ByteString  -- ^ 64-byte Schnorr signature
+  -> Bool
+verify_schnorr = _verify_schnorr (mul_unsafe _CURVE_G)
+
+-- | The same as 'verify_schnorr', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   You can expect about a 1.5x performance increase when using this
+--   function, compared to 'verify_schnorr'.
+--
+--   >>> let !tex = precompute
+--   >>> verify_schnorr' tex msg pub <valid signature>
+--   True
+--   >>> verify_schnorr' tex msg pub <invalid signature>
+--   False
+verify_schnorr'
+  :: Context        -- ^ secp256k1 context
+  -> BS.ByteString  -- ^ message
+  -> Pub            -- ^ public key
+  -> BS.ByteString  -- ^ 64-byte Schnorr signature
+  -> Bool
+verify_schnorr' tex = _verify_schnorr (mul_wnaf tex)
+
+_verify_schnorr
+  :: (Wider -> Maybe Projective) -- partially-applied multiplication function
+  -> BS.ByteString
+  -> Pub
+  -> BS.ByteString
+  -> Bool
+_verify_schnorr _mul m p sig
+  | BS.length sig /= 64 = False
+  | otherwise = M.isJust $ do
+      let capP = even_y_vartime p
+          (unsafe_roll32 -> r, unsafe_roll32 -> s) = BS.splitAt 32 sig
+      guard (fe r && ge s)
+      let Affine (C.retr -> x_P) _ = affine capP
+          e = modQ . unsafe_roll32 $
+            hash_challenge (unroll32 r <> unroll32 x_P <> m)
+      pt0 <- _mul s
+      pt1 <- mul_unsafe capP e
+      let dif = add pt0 (neg pt1)
+      guard (dif /= _CURVE_ZERO)
+      let Affine (C.from -> x_R) (C.from -> y_R) = affine dif
+      guard $ not (W.odd y_R || x_R /= r)
+{-# INLINE _verify_schnorr #-}
+
+-- hardcoded tag of BIP0340/aux
+--
+-- \x -> let h = SHA256.hash "BIP0340/aux"
+--       in  SHA256.hash (h <> h <> x)
+hash_aux :: BS.ByteString -> BS.ByteString
+hash_aux x = SHA256.hash $
+  "\241\239N^\192c\202\218m\148\202\250\157\152~\160i&X9\236\193\US\151-w\165.\216\193\204\144\241\239N^\192c\202\218m\148\202\250\157\152~\160i&X9\236\193\US\151-w\165.\216\193\204\144" <> x
+{-# INLINE hash_aux #-}
+
+-- hardcoded tag of BIP0340/nonce
+hash_nonce :: BS.ByteString -> BS.ByteString
+hash_nonce x = SHA256.hash $
+  "\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/" <> x
+{-# INLINE hash_nonce #-}
+
+-- hardcoded tag of BIP0340/challenge
+hash_challenge :: BS.ByteString -> BS.ByteString
+hash_challenge x = SHA256.hash $
+  "{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|" <> x
+{-# INLINE hash_challenge #-}
+
+-- ecdsa ----------------------------------------------------------------------
+-- see https://www.rfc-editor.org/rfc/rfc6979, https://secg.org/sec1-v2.pdf
+
+-- RFC6979 2.3.2
+bits2int :: BS.ByteString -> Wider
+bits2int = unsafe_roll32
+{-# INLINABLE bits2int #-}
+
+-- RFC6979 2.3.3
+int2octets :: Wider -> BS.ByteString
+int2octets = unroll32
+{-# INLINABLE int2octets #-}
+
+-- RFC6979 2.3.4
+bits2octets :: BS.ByteString -> BS.ByteString
+bits2octets bs =
+  let z1 = bits2int bs
+      z2 = modQ z1
+  in  int2octets z2
+
+-- | An ECDSA signature.
+data ECDSA = ECDSA {
+    ecdsa_r :: !Wider
+  , ecdsa_s :: !Wider
+  }
+  deriving (Eq, Generic)
+
+instance Show ECDSA where
+  show _ = "<ecdsa signature>"
+
+-- ECDSA signature type.
+data SigType =
+    LowS
+  | Unrestricted
+  deriving Show
+
+-- Indicates whether to hash the message or assume it has already been
+-- hashed.
+data HashFlag =
+    Hash
+  | NoHash
+  deriving Show
+
+-- Convert an ECDSA signature to low-S form.
+low :: ECDSA -> ECDSA
+low (ECDSA r s) = ECDSA r ms where
+  ms | s > _CURVE_QH = _CURVE_Q - s
+     | otherwise = s
+{-# INLINE low #-}
+
+-- | Produce an ECDSA signature for the provided message, using the
+--   provided private key.
+--
+--   'sign_ecdsa' produces a "low-s" signature, as is commonly required
+--   in applications using secp256k1. If you need a generic ECDSA
+--   signature, use 'sign_ecdsa_unrestricted'.
+--
+--   >>> sign_ecdsa sec msg
+--   Just "<ecdsa signature>"
+sign_ecdsa
+  :: Wider         -- ^ secret key
+  -> BS.ByteString -- ^ message
+  -> Maybe ECDSA
+sign_ecdsa = _sign_ecdsa (mul _CURVE_G) LowS Hash
+
+-- | The same as 'sign_ecdsa', except uses a 'Context' to optimise internal
+--   calculations.
+--
+--   You can expect about a 10x performance increase when using this
+--   function, compared to 'sign_ecdsa'.
+--
+--   >>> let !tex = precompute
+--   >>> sign_ecdsa' tex sec msg
+--   Just "<ecdsa signature>"
+sign_ecdsa'
+  :: Context       -- ^ secp256k1 context
+  -> Wider         -- ^ secret key
+  -> BS.ByteString -- ^ message
+  -> Maybe ECDSA
+sign_ecdsa' tex = _sign_ecdsa (mul_wnaf tex) LowS Hash
+
+-- | Produce an ECDSA signature for the provided message, using the
+--   provided private key.
+--
+--   'sign_ecdsa_unrestricted' produces an unrestricted ECDSA signature,
+--   which is less common in applications using secp256k1 due to the
+--   signature's inherent malleability. If you need a conventional
+--   "low-s" signature, use 'sign_ecdsa'.
+--
+--   >>> sign_ecdsa_unrestricted sec msg
+--   Just "<ecdsa signature>"
+sign_ecdsa_unrestricted
+  :: Wider         -- ^ secret key
+  -> BS.ByteString -- ^ message
+  -> Maybe ECDSA
+sign_ecdsa_unrestricted = _sign_ecdsa (mul _CURVE_G) Unrestricted Hash
+
+-- | The same as 'sign_ecdsa_unrestricted', except uses a 'Context' to
+--   optimise internal calculations.
+--
+--   You can expect about a 10x performance increase when using this
+--   function, compared to 'sign_ecdsa_unrestricted'.
+--
+--   >>> let !tex = precompute
+--   >>> sign_ecdsa_unrestricted' tex sec msg
+--   Just "<ecdsa signature>"
+sign_ecdsa_unrestricted'
+  :: Context       -- ^ secp256k1 context
+  -> Wider         -- ^ secret key
+  -> BS.ByteString -- ^ message
+  -> Maybe ECDSA
+sign_ecdsa_unrestricted' tex = _sign_ecdsa (mul_wnaf tex) Unrestricted Hash
+
+-- Produce a "low-s" ECDSA signature for the provided message, using
+-- the provided private key. Assumes that the message has already been
+-- pre-hashed.
+--
+-- (Useful for testing against noble-secp256k1's suite, in which messages
+-- in the test vectors have already been hashed.)
+_sign_ecdsa_no_hash
+  :: Wider         -- ^ secret key
+  -> BS.ByteString -- ^ message digest
+  -> Maybe ECDSA
+_sign_ecdsa_no_hash = _sign_ecdsa (mul _CURVE_G) LowS NoHash
+
+_sign_ecdsa_no_hash'
+  :: Context
+  -> Wider
+  -> BS.ByteString
+  -> Maybe ECDSA
+_sign_ecdsa_no_hash' tex = _sign_ecdsa (mul_wnaf tex) LowS NoHash
+
+_sign_ecdsa
+  :: (Wider -> Maybe Projective) -- partially-applied multiplication function
+  -> SigType
+  -> HashFlag
+  -> Wider
+  -> BS.ByteString
+  -> Maybe ECDSA
+_sign_ecdsa _mul ty hf _SECRET m = runST $ do
+    -- RFC6979 sec 3.3a
+    let entropy = int2octets _SECRET
+        nonce   = bits2octets h
+    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
+    -- RFC6979 sec 2.4
+    sign_loop drbg
+  where
+    d  = S.to _SECRET
+    hm = S.to (bits2int h)
+    h  = case hf of
+      Hash -> SHA256.hash m
+      NoHash -> m
+
+    sign_loop g = do
+      k <- gen_k g
+      let mpair = do
+            kg <- _mul k
+            let Affine (S.to . C.retr -> r) _ = affine kg
+                ki = S.inv (S.to k)
+                s  = (hm + d * r) * ki
+            pure $! (S.retr r, S.retr s)
+      case mpair of
+        Nothing -> pure Nothing
+        Just (r, s)
+          | r == 0 -> sign_loop g -- negligible probability
+          | otherwise ->
+              let !sig = Just $! ECDSA r s
+              in  case ty of
+                    Unrestricted -> pure sig
+                    LowS -> pure (fmap low sig)
+{-# INLINE _sign_ecdsa #-}
+
+-- RFC6979 sec 3.3b
+gen_k :: DRBG.DRBG s -> ST s Wider
+gen_k g = loop g where
+  loop drbg = do
+    bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
+    let can = bits2int bytes
+    if   can >= _CURVE_Q
+    then loop drbg
+    else pure can
+{-# INLINE gen_k #-}
+
+-- | Verify a "low-s" ECDSA signature for the provided message and
+--   public key,
+--
+--   Fails to verify otherwise-valid "high-s" signatures. If you need to
+--   verify generic ECDSA signatures, use 'verify_ecdsa_unrestricted'.
+--
+--   >>> verify_ecdsa msg pub valid_sig
+--   True
+--   >>> verify_ecdsa msg pub invalid_sig
+--   False
+verify_ecdsa
+  :: BS.ByteString -- ^ message
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify_ecdsa m p sig@(ECDSA _ s)
+  | s > _CURVE_QH = False
+  | otherwise = verify_ecdsa_unrestricted m p sig
+
+-- | The same as 'verify_ecdsa', except uses a 'Context' to optimise
+--   internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to 'verify_ecdsa'.
+--
+--   >>> let !tex = precompute
+--   >>> verify_ecdsa' tex msg pub valid_sig
+--   True
+--   >>> verify_ecdsa' tex msg pub invalid_sig
+--   False
+verify_ecdsa'
+  :: Context       -- ^ secp256k1 context
+  -> BS.ByteString -- ^ message
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify_ecdsa' tex m p sig@(ECDSA _ s)
+  | s > _CURVE_QH = False
+  | otherwise = verify_ecdsa_unrestricted' tex m p sig
+
+-- | Verify an unrestricted ECDSA signature for the provided message and
+--   public key.
+--
+--   >>> verify_ecdsa_unrestricted msg pub valid_sig
+--   True
+--   >>> verify_ecdsa_unrestricted msg pub invalid_sig
+--   False
+verify_ecdsa_unrestricted
+  :: BS.ByteString -- ^ message
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_unsafe _CURVE_G)
+
+-- | The same as 'verify_ecdsa_unrestricted', except uses a 'Context' to
+--   optimise internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to 'verify_ecdsa_unrestricted'.
+--
+--   >>> let !tex = precompute
+--   >>> verify_ecdsa_unrestricted' tex msg pub valid_sig
+--   True
+--   >>> verify_ecdsa_unrestricted' tex msg pub invalid_sig
+--   False
+verify_ecdsa_unrestricted'
+  :: Context       -- ^ secp256k1 context
+  -> BS.ByteString -- ^ message
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+verify_ecdsa_unrestricted' tex = _verify_ecdsa_unrestricted (mul_wnaf tex)
+
+_verify_ecdsa_unrestricted
+  :: (Wider -> Maybe Projective) -- partially-applied multiplication function
+  -> BS.ByteString
+  -> Pub
+  -> ECDSA
+  -> Bool
+_verify_ecdsa_unrestricted _mul m p (ECDSA r0 s0) = M.isJust $ do
+  -- SEC1-v2 4.1.4
+  let h = SHA256.hash m
+  guard (ge r0 && ge s0)
+  let r  = S.to r0
+      s  = S.to s0
+      e  = S.to (bits2int h)
+      si = S.inv s
+      u1 = S.retr (e * si)
+      u2 = S.retr (r * si)
+  pt0 <- _mul u1
+  pt1 <- mul_unsafe p u2
+  let capR = add pt0 pt1
+  guard (capR /= _CURVE_ZERO)
+  let Affine (S.to . C.retr -> v) _ = affine capR
+  guard (v == r)
+{-# INLINE _verify_ecdsa_unrestricted #-}
 
