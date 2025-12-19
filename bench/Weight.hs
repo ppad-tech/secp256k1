@@ -2,10 +2,13 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- XX need to make sure arguments aren't allocating in the benchmarks
+
 module Main where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
+import Data.Word.Wider (Wider(..))
 import Control.DeepSeq
 import qualified Crypto.Curve.Secp256k1 as S
 import qualified Weigh as W
@@ -20,12 +23,12 @@ decodeLenient bs = case B16.decode bs of
   Nothing -> error "bang"
   Just b -> b
 
-parse_int :: BS.ByteString -> Integer
+parse_int :: BS.ByteString -> Wider
 parse_int bs = case S.parse_int256 bs of
   Nothing -> error "bang"
   Just v -> v
 
-big :: Integer
+big :: Wider
 big = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
 
 tex :: S.Context
@@ -34,7 +37,6 @@ tex = S.precompute
 -- note that 'weigh' doesn't work properly in a repl
 main :: IO ()
 main = W.mainWith $ do
-  remQ
   parse_int256
   add
   mul
@@ -44,11 +46,6 @@ main = W.mainWith $ do
   schnorr
   ecdsa
   ecdh
-
-remQ :: W.Weigh ()
-remQ = W.wgroup "remQ" $ do
-  W.func "remQ 2" S.remQ 2
-  W.func "remQ (2 ^ 255 - 19)" S.remQ big
 
 parse_int256 :: W.Weigh ()
 parse_int256 = W.wgroup "parse_int256" $ do
@@ -75,7 +72,7 @@ mul_unsafe = W.wgroup "mul_unsafe" $ do
 
 mul_wnaf :: W.Weigh ()
 mul_wnaf = W.wgroup "mul_wnaf" $ do
-  W.value "precompute" S.precompute
+  W.value "precompute" S.precompute -- XX ?
   W.func "2 G" (S.mul_wnaf tex) 2
   W.func "(2 ^ 255 - 19) G" (S.mul_wnaf tex) big
 
@@ -117,7 +114,7 @@ ecdh = W.wgroup "ecdh" $ do
     Just pub = S.parse_point . decodeLenient $
       "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
 
-s_sk :: Integer
+s_sk :: Wider
 s_sk = parse_int . decodeLenient $
   "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
 

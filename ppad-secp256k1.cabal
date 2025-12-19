@@ -15,6 +15,11 @@ description:
   Pure BIP0340-style Schnorr signatures, deterministic RFC6979 ECDSA, and
   ECDH shared secret computation on the elliptic curve secp256k1.
 
+flag llvm
+  description: Use GHC's LLVM backend.
+  default:     False
+  manual:      True
+
 source-repository head
   type:     git
   location: git.ppad.tech/secp256k1.git
@@ -93,6 +98,7 @@ benchmark secp256k1-weigh
     , bytestring
     , deepseq
     , ppad-base16
+    , ppad-fixed
     , ppad-secp256k1
     , weigh
 
