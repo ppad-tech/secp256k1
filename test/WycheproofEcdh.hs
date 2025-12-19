@@ -13,11 +13,11 @@ import qualified Crypto.Hash.SHA256 as SHA256
 import Data.Aeson ((.:))
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
-import Data.Bits ((.<<.), (.>>.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import Data.Word.Wider (Wider(..))
 import Test.Tasty (TestTree, testGroup)
 import qualified Test.Tasty.HUnit as H (assertBool, assertEqual, testCase)
 
@@ -137,29 +137,10 @@ der_to_pub :: T.Text -> Either String Projective
 der_to_pub (decodeLenient . TE.encodeUtf8 -> bs) =
   AT.parseOnly parse_der_pub bs
 
-parse_bigint :: T.Text -> Integer
-parse_bigint (decodeLenient . TE.encodeUtf8 -> bs) = roll bs where
-  roll :: BS.ByteString -> Integer
-  roll = BS.foldl' alg 0 where
-    alg !a (fi -> !b) = (a .<<. 8) .|. b
-
--- big-endian bytestring encoding
-unroll :: Integer -> BS.ByteString
-unroll i = case i of
-    0 -> BS.singleton 0
-    _ -> BS.reverse $ BS.unfoldr step i
-  where
-    step 0 = Nothing
-    step m = Just (fi m, m .>>. 8)
-
--- big-endian bytestring encoding for 256-bit ints, left-padding with
--- zeros if necessary. the size of the integer is not checked.
-unroll32 :: Integer -> BS.ByteString
-unroll32 (unroll -> u)
-    | l < 32 = BS.replicate (32 - l) 0 <> u
-    | otherwise = u
-  where
-    l = BS.length u
+parse_bigint :: T.Text -> Wider
+parse_bigint (decodeLenient . TE.encodeUtf8 -> bs) = case roll32 bs of
+  Nothing -> error "couldn't parse_bigint"
+  Just v -> v
 
 data Wycheproof = Wycheproof {
     wp_testGroups :: ![EcdhTestGroup]

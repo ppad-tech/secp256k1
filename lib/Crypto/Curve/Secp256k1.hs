@@ -87,6 +87,9 @@ module Crypto.Curve.Secp256k1 (
   -- for testing/benchmarking
   , _sign_ecdsa_no_hash
   , _sign_ecdsa_no_hash'
+  , roll32
+  , unsafe_roll32
+  , unroll32
   ) where
 
 import Control.Monad (guard)
@@ -218,10 +221,14 @@ unsafe_roll32 bs =
 {-# INLINABLE unsafe_roll32 #-}
 
 -- arbitrary-size big-endian bytestring decoding
-roll :: BS.ByteString -> Wider
-roll = BS.foldl' alg 0 where
-  alg !a (word8_to_wider -> !b) = (a `W.shl_limb` 8) `W.or` b
-{-# INLINABLE roll #-}
+roll32 :: BS.ByteString -> Maybe Wider
+roll32 bs
+    | BS.length stripped > 32 = Nothing
+    | otherwise = Just $! BS.foldl' alg 0 stripped
+  where
+    stripped = BS.dropWhile (== 0) bs
+    alg !a (word8_to_wider -> !b) = (a `W.shl_limb` 8) `W.or` b
+{-# INLINABLE roll32 #-}
 
 -- 256-bit big-endian bytestring encoding
 unroll32 :: Wider -> BS.ByteString
@@ -314,16 +321,12 @@ _CURVE_Bm3 = 21
 
 -- Is field element?
 fe :: Wider -> Bool
-fe n = case W.cmp n _CURVE_P of
-  LT -> True
-  _  -> False
+fe n = n > 0 && n < _CURVE_P
 {-# INLINE fe #-}
 
 -- Is group element?
 ge :: Wider -> Bool
-ge n = case W.cmp n _CURVE_Q of
-  LT -> True
-  _  -> False
+ge n = n > 0 && n < _CURVE_Q
 {-# INLINE ge #-}
 
 -- curve points ---------------------------------------------------------------
@@ -798,7 +801,7 @@ _parse_compressed h (unsafe_roll32 -> x)
 _parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
 _parse_uncompressed h bs = do
   let (unsafe_roll32 -> x, unsafe_roll32 -> y) = BS.splitAt _CURVE_Q_BYTES bs
-  guard (h /= 0x04)
+  guard (h == 0x04)
   let !p = Projective (C.to x) (C.to y) 1
   guard (valid p)
   pure $! p
@@ -808,11 +811,12 @@ _parse_uncompressed h bs = do
 --   >>> parse_sig <64-byte compact signature>
 --   Just "<ecdsa signature>"
 parse_sig :: BS.ByteString -> Maybe ECDSA
-parse_sig bs
-  | BS.length bs /= 64 = Nothing
-  | otherwise = pure $
-      let (roll -> r, roll -> s) = BS.splitAt 32 bs
-      in  ECDSA r s
+parse_sig bs = do
+  guard (BS.length bs == 64)
+  let (r0, s0) = BS.splitAt 32 bs
+  r <- roll32 r0
+  s <- roll32 s0
+  pure $! ECDSA r s
 
 -- serializing ----------------------------------------------------------------
 

@@ -17,7 +17,6 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified GHC.Num.Integer as I
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
@@ -29,11 +28,6 @@ decodeLenient bs = case B16.decode bs of
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
-
--- big-endian bytestring decoding
-roll :: BS.ByteString -> Integer
-roll = BS.foldl' unstep 0 where
-  unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
 
 execute_group :: Context -> SigType -> EcdsaTestGroup -> TestTree
 execute_group tex ty EcdsaTestGroup {..} =
@@ -74,13 +68,18 @@ parse_der_sig = do
     meat len = do
       (lr, bs_r) <- parseAsnInt
       (ls, bs_s) <- parseAsnInt
-      let r = fi (roll bs_r)
-          s = fi (roll bs_s)
-          checks = lr + ls == len
-      rest <- AT.takeByteString
-      if   rest == mempty && checks
-      then pure (ECDSA r s)
-      else fail "input remaining or length mismatch"
+      let rs = do
+            r <- roll32 bs_r
+            s <- roll32 bs_s
+            pure (r, s)
+      case rs of
+        Nothing -> fail "signature components too large"
+        Just (r, s) -> do
+          let checks = lr + ls == len
+          rest <- AT.takeByteString
+          if   rest == mempty && checks
+          then pure (ECDSA r s)
+          else fail "input remaining or length mismatch"
 
 parseAsnInt :: AT.Parser (Int, BS.ByteString)
 parseAsnInt = do

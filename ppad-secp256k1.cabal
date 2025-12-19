@@ -54,6 +54,7 @@ test-suite secp256k1-tests
     , base
     , bytestring
     , ppad-base16
+    , ppad-fixed
     , ppad-secp256k1
     , ppad-sha256
     , tasty
