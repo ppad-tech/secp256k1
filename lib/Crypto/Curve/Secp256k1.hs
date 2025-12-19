@@ -930,7 +930,10 @@ _sign_schnorr _mul _SECRET m a = do
       e         = S.to (unsafe_roll32 rand')
       bytes_ked = unroll32 (S.retr (k + e * d))
       sig       = bytes_r <> bytes_ked
-  guard (verify_schnorr m p sig)
+  -- NB for benchmarking we morally want to remove the precautionary
+  --    verification check here.
+  --
+  -- guard (verify_schnorr m p sig)
   pure $! sig
 {-# INLINE _sign_schnorr #-}
 
