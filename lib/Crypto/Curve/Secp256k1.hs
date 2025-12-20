@@ -424,7 +424,7 @@ lift_vartime x = do
 even_y_vartime :: Projective -> Projective
 even_y_vartime p = case affine p of
   Affine _ (C.retr -> y)
-    | W.odd y  -> neg p
+    | CT.decide (W.odd y)  -> neg p -- XX
     | otherwise -> p
 
 -- ec arithmetic --------------------------------------------------------------
@@ -432,6 +432,12 @@ even_y_vartime p = case affine p of
 -- Negate secp256k1 point.
 neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (negate y) z
+
+-- Constant-time selection of Projective points.
+select_proj :: Projective -> Projective -> CT.Choice -> Projective
+select_proj (Projective ax ay az) (Projective bx by bz) c =
+  Projective (C.select ax bx c) (C.select ay by c) (C.select az bz c)
+{-# INLINE select_proj #-}
 
 -- Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
@@ -616,10 +622,10 @@ mul p sec = do
       | j == _CURVE_Q_BITS = acc
       | otherwise =
           let !nd = double d
-              !(!nm, !lsb_set) = W.shr1_c _SECRET -- constant-time shift
-          in  if   lsb_set
-              then loop (succ j) (add acc d) f nd nm
-              else loop (succ j) acc (add f d) nd nm
+              !(# nm, lsb_set #) = W.shr1_c _SECRET
+              !nacc = select_proj acc (add acc d) lsb_set
+              !nf   = select_proj (add f d) f lsb_set
+          in  loop (succ j) nacc nf nd nm
 {-# INLINE mul #-}
 
 -- Timing-unsafe scalar multiplication of secp256k1 points.
@@ -635,8 +641,8 @@ mul_unsafe p = \case
       Zero -> r
       m ->
         let !nd = double d
-            !(!nm, !lsb_set) = W.shr1_c m
-            !nr = if lsb_set then add r d else r
+            !(# !nm, !lsb_set #) = W.shr1_c m
+            !nr = if CT.decide lsb_set then add r d else r -- XX
         in  loop nr nd nm
 
 -- | Precomputed multiples of the secp256k1 base or generator point.
@@ -914,7 +920,7 @@ _sign_schnorr _mul _SECRET m a = do
   p <- _mul _SECRET
   let Affine (C.retr -> x_p) (C.retr -> y_p) = affine p
       s = S.to _SECRET
-      d | W.odd y_p = negate s
+      d | CT.decide (W.odd y_p) = negate s -- XX
         | otherwise = s
       bytes_d = unroll32 (S.retr d)
       bytes_p = unroll32 x_p
@@ -924,7 +930,7 @@ _sign_schnorr _mul _SECRET m a = do
   guard (k' /= 0) -- negligible probability
   pt <- _mul (S.retr k')
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
-      k | W.odd y_r = negate k'
+      k | CT.decide (W.odd y_r) = negate k' -- XX
         | otherwise = k'
       bytes_r   = unroll32 x_r
       rand'     = hash_challenge (bytes_r <> bytes_p <> m)
@@ -991,7 +997,7 @@ _verify_schnorr _mul m p sig
       let dif = add pt0 (neg pt1)
       guard (dif /= _CURVE_ZERO)
       let Affine (C.from -> x_R) (C.from -> y_R) = affine dif
-      guard $ not (W.odd y_R || x_R /= r)
+      guard $ not (CT.decide (W.odd y_R) || x_R /= r) -- XX
 {-# INLINE _verify_schnorr #-}
 
 -- hardcoded tag of BIP0340/aux
