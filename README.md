@@ -171,8 +171,8 @@ differential attributable to benchmarking noise:
   std dev              584.2 ns   (496.4 ns .. 689.3 ns)
 ```
 
-Though we target firm guarantees of constant-time execution, take
-reasonable security precautions as appropriate. You shouldn't deploy the
+Though we rigorously target constant-time execution, take reasonable
+security precautions as appropriate. You shouldn't deploy the
 implementations within in any situation where they could easily be used
 as an oracle to construct a [timing attack][timea], and you shouldn't
 give sophisticated malicious actors [access to your computer][flurl].
