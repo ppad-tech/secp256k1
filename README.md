@@ -210,3 +210,4 @@ to get a REPL for the main library.
 [const]: https://www.chosenplaintext.ca/articles/beginners-guide-constant-time-cryptography.html
 [csecp]: https://git.ppad.tech/csecp256k1
 [noble]: https://github.com/paulmillr/noble-secp256k1
+[fixed]: https://git.ppad.tech/fixed
