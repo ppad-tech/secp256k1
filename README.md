@@ -102,91 +102,80 @@ relevant [Wycheproof vectors][wyche] (with the former also being tested
 against [noble-secp256k1's][noble] vectors), so their implementations
 are likely to be accurate and safe from attacks targeting e.g.
 faulty nonce generation or malicious inputs for signature or public
-key parameters. Timing-sensitive operations, e.g. elliptic curve
-scalar multiplication, have been explicitly written so as to execute
-*algorithmically* in time constant with respect to secret data, and
-evidence from benchmarks supports this:
+key parameters.
+
+Timing-sensitive operations, e.g. elliptic curve scalar multiplication,
+have been explicitly written so as to execute algorithmically in time
+constant with respect to secret data. Moreover, fixed-size (256-bit)
+wide words with constant-time operations provided by [ppad-fixed][fixed]
+are used exclusively internally, avoiding timing variations incurred by
+use of GHC's variable-size Integer type.
+
+Benchmarks validate the constant-time implementation, with any timing
+differential attributable to benchmarking noise:
 
 ```
   benchmarking derive_pub/wnaf, sk = 2
-  time                 76.20 μs   (75.62 μs .. 77.33 μs)
-                       0.999 R²   (0.998 R² .. 1.000 R²)
-  mean                 75.87 μs   (75.61 μs .. 76.48 μs)
-  std dev              1.218 μs   (614.3 ns .. 2.291 μs)
-  variance introduced by outliers: 11% (moderately inflated)
+  time                 12.74 μs   (12.58 μs .. 13.00 μs)
+                       0.999 R²   (0.996 R² .. 1.000 R²)
+  mean                 12.65 μs   (12.60 μs .. 12.84 μs)
+  std dev              290.1 ns   (107.0 ns .. 573.0 ns)
+  variance introduced by outliers: 23% (moderately inflated)
 
   benchmarking derive_pub/wnaf, sk = 2 ^ 255 - 19
-  time                 76.50 μs   (75.88 μs .. 77.37 μs)
-                       0.999 R²   (0.998 R² .. 1.000 R²)
-  mean                 76.26 μs   (75.99 μs .. 76.93 μs)
-  std dev              1.317 μs   (570.7 ns .. 2.583 μs)
-  variance introduced by outliers: 12% (moderately inflated)
-
-  benchmarking schnorr/sign_schnorr' (small)
-  time                 1.430 ms   (1.424 ms .. 1.438 ms)
+  time                 12.64 μs   (12.62 μs .. 12.66 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 1.429 ms   (1.425 ms .. 1.433 ms)
-  std dev              13.71 μs   (10.48 μs .. 18.85 μs)
+  mean                 12.64 μs   (12.62 μs .. 12.66 μs)
+  std dev              54.35 ns   (43.90 ns .. 68.18 ns)
+```
+
+``
+  benchmarking schnorr/sign_schnorr' (small)
+  time                 47.33 μs   (47.04 μs .. 47.57 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 47.17 μs   (47.03 μs .. 47.32 μs)
+  std dev              491.1 ns   (410.2 ns .. 615.3 ns)
 
   benchmarking schnorr/sign_schnorr' (large)
-  time                 1.400 ms   (1.399 ms .. 1.402 ms)
+  time                 47.37 μs   (47.20 μs .. 47.54 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 1.406 ms   (1.404 ms .. 1.408 ms)
-  std dev              5.989 μs   (5.225 μs .. 7.317 μs)
+  mean                 47.21 μs   (47.14 μs .. 47.31 μs)
+  std dev              286.5 ns   (224.0 ns .. 349.4 ns)
+```
 
+```
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 114.5 μs   (114.0 μs .. 115.3 μs)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 115.2 μs   (114.8 μs .. 115.8 μs)
-  std dev              1.650 μs   (1.338 μs .. 2.062 μs)
+  time                 58.12 μs   (57.89 μs .. 58.29 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 57.77 μs   (57.61 μs .. 57.91 μs)
+  std dev              505.6 ns   (420.2 ns .. 639.8 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 115.3 μs   (115.1 μs .. 115.7 μs)
+  time                 58.03 μs   (57.86 μs .. 58.19 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 116.0 μs   (115.6 μs .. 116.4 μs)
-  std dev              1.367 μs   (1.039 μs .. 1.839 μs)
+  mean                 57.87 μs   (57.74 μs .. 57.99 μs)
+  std dev              406.9 ns   (341.1 ns .. 512.9 ns)
+```
 
+```
   benchmarking ecdh/ecdh (small)
-  time                 907.0 μs   (902.8 μs .. 912.0 μs)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 909.5 μs   (907.0 μs .. 913.0 μs)
-  std dev              10.05 μs   (6.943 μs .. 17.11 μs)
+  time                 158.6 μs   (158.4 μs .. 159.0 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 158.8 μs   (158.4 μs .. 159.4 μs)
+  std dev              1.586 μs   (1.139 μs .. 2.612 μs)
 
   benchmarking ecdh/ecdh (large)
-  time                 922.9 μs   (911.0 μs .. 937.4 μs)
-                       0.999 R²   (0.998 R² .. 1.000 R²)
-  mean                 915.8 μs   (911.9 μs .. 922.5 μs)
-  std dev              16.84 μs   (9.830 μs .. 26.48 μs)
-```
-
-Due to the use of arbitrary-precision integers, integer division modulo
-the elliptic curve group order does display persistent substantial
-timing differences on the order of 1-2 nanoseconds when the inputs
-differ dramatically in size (here 2 bits vs 255 bits):
-
-```
-  benchmarking remQ (remainder modulo _CURVE_Q)/remQ 2
-  time                 11.13 ns   (11.12 ns .. 11.14 ns)
+  time                 159.2 μs   (158.9 μs .. 159.4 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 11.10 ns   (11.09 ns .. 11.11 ns)
-  std dev              33.75 ps   (30.27 ps .. 38.31 ps)
-
-  benchmarking remQ (remainder modulo _CURVE_Q)/remQ (2 ^ 255 - 19)
-  time                 12.50 ns   (12.49 ns .. 12.51 ns)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 12.51 ns   (12.51 ns .. 12.52 ns)
-  std dev              26.72 ps   (14.45 ps .. 45.87 ps)
+  mean                 158.8 μs   (158.6 μs .. 159.0 μs)
+  std dev              584.2 ns   (496.4 ns .. 689.3 ns)
 ```
 
-This represents the worst-case scenario (real-world private keys will
-never differ so extraordinarily) and is likely to be well within
-acceptable limits for all but the most extreme security requirements.
-But because we don't make "hard" guarantees of constant-time execution,
-take reasonable security precautions as appropriate. You shouldn't
-deploy the implementations within in any situation where they could
-easily be used as an oracle to construct a [timing attack][timea],
-and you shouldn't give sophisticated malicious actors [access to your
-computer][flurl].
+Though we target firm guarantees of constant-time execution, take
+reasonable security precautions as appropriate. You shouldn't deploy the
+implementations within in any situation where they could easily be used
+as an oracle to construct a [timing attack][timea], and you shouldn't
+give sophisticated malicious actors [access to your computer][flurl].
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
