@@ -85,6 +85,7 @@ module Crypto.Curve.Secp256k1 (
   , valid
 
   -- for testing/benchmarking
+  , _precompute
   , _sign_ecdsa_no_hash
   , _sign_ecdsa_no_hash'
   , roll32

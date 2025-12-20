@@ -31,9 +31,6 @@ parse_int bs = case S.parse_int256 bs of
 big :: Wider
 big = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
 
-tex :: S.Context
-tex = S.precompute
-
 -- note that 'weigh' doesn't work properly in a repl
 main :: IO ()
 main = W.mainWith $ do
@@ -90,9 +87,9 @@ mul_wnaf :: W.Weigh ()
 mul_wnaf =
   let !t = 2
       !bigl = big
-      !con = tex
+      !con = S._precompute 8
   in  W.wgroup "mul_wnaf" $ do
-        W.value "precompute" S.precompute -- XX ?
+        W.func "precompute" S._precompute (8 :: Int)
         W.func "2 G" (S.mul_wnaf con) t
         W.func "(2 ^ 255 - 19) G" (S.mul_wnaf con) bigl
 
@@ -100,7 +97,7 @@ derive_pub :: W.Weigh ()
 derive_pub =
   let !t = 2
       !bigl = big
-      !con = tex
+      !con = S._precompute 8
   in  W.wgroup "derive_pub" $ do
         W.func "sk = 2" S.derive_pub t
         W.func "sk = 2 ^ 255 - 19" S.derive_pub bigl
@@ -114,7 +111,7 @@ schnorr =
       !s_auxl = s_aux
       !s_sigl = s_sig
       !s_pkl  = s_pk
-      !con    = tex
+      !con    = S._precompute 8
       !bigl   = big
   in  W.wgroup "schnorr" $ do
         W.func "sign_schnorr (small)" (S.sign_schnorr t s_msgl) s_auxl
@@ -128,7 +125,7 @@ ecdsa :: W.Weigh ()
 ecdsa =
   let !t = 2
       !s_msgl = s_msg
-      !con    = tex
+      !con    = S._precompute 8
       !bigl   = big
       !msg = "i approve of this message"
       Just !pub = S.derive_pub bigl
@@ -139,7 +136,7 @@ ecdsa =
          W.func "sign_ecdsa' (small)" (S.sign_ecdsa' con t) s_msgl
          W.func "sign_ecdsa' (large)" (S.sign_ecdsa' con bigl) s_msgl
          W.func "verify_ecdsa" (S.verify_ecdsa msg pub) sig
-         W.func "verify_ecdsa'" (S.verify_ecdsa' tex msg pub) sig
+         W.func "verify_ecdsa'" (S.verify_ecdsa' con msg pub) sig
 
 ecdh :: W.Weigh ()
 ecdh = W.wgroup "ecdh" $ do
