@@ -34,6 +34,12 @@
       inputs.ppad-sha512.follows = "ppad-sha512";
       inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
+    ppad-fixed = {
+      type = "git";
+      url  = "git://git.ppad.tech/fixed.git";
+      ref  = "master";
+      inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
+    };
     flake-utils.follows = "ppad-nixpkgs/flake-utils";
     nixpkgs.follows = "ppad-nixpkgs/nixpkgs";
   };
@@ -42,6 +48,7 @@
             , ppad-base16
             , ppad-sha256, ppad-sha512
             , ppad-hmac-drbg
+            , ppad-fixed
             }:
     flake-utils.lib.eachDefaultSystem (system:
       let
@@ -49,19 +56,28 @@
 
         pkgs = import nixpkgs { inherit system; };
         hlib = pkgs.haskell.lib;
+        llvm  = pkgs.llvmPackages_15.llvm;
 
         base16 = ppad-base16.packages.${system}.default;
         sha256 = ppad-sha256.packages.${system}.default;
         hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
 
+        fixed = ppad-fixed.packages.${system}.default;
+        fixed-llvm =
+          hlib.addBuildTools
+            (hlib.enableCabalFlag fixed "llvm")
+            [ llvm ];
+
         hpkgs = pkgs.haskell.packages.ghc981.extend (new: old: {
           ppad-base16 = base16;
           ppad-sha256 = sha256;
           ppad-hmac-drbg = hmac-drbg;
+          ppad-fixed = fixed-llvm;
           ${lib} = new.callCabal2nix lib ./. {
             ppad-base16 = new.ppad-base16;
             ppad-sha256 = new.ppad-sha256;
             ppad-hmac-drbg = new.ppad-hmac-drbg;
+            ppad-fixed = new.ppad-fixed;
           };
         });
 
@@ -83,8 +99,6 @@
               cc
               llvm
             ];
-
-            inputsFrom = builtins.attrValues self.packages.${system};
 
             doBenchmark = true;
 

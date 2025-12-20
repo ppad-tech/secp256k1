@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns -fno-warn-type-defaults #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -6,9 +6,12 @@ module Main where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
+import qualified Data.Word.Wider as W
 import Control.DeepSeq
 import Criterion.Main
 import qualified Crypto.Curve.Secp256k1 as S
+
+import qualified Numeric.Montgomery.Secp256k1.Curve as C
 
 instance NFData S.Projective
 instance NFData S.Affine
@@ -33,20 +36,10 @@ main = defaultMain [
   , ecdh
   ]
 
-parse_int256 :: BS.ByteString -> Integer
+parse_int256 :: BS.ByteString -> W.Wider
 parse_int256 bs = case S.parse_int256 bs of
   Nothing -> error "bang"
   Just v -> v
-
-remQ :: Benchmark
-remQ = env setup $ \x ->
-    bgroup "remQ (remainder modulo _CURVE_Q)" [
-      bench "remQ 2 " $ nf S.remQ 2
-    , bench "remQ (2 ^ 255 - 19)" $ nf S.remQ x
-    ]
-  where
-    setup = pure . parse_int256 $ decodeLenient
-      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
 
 parse_point :: Benchmark
 parse_point = bgroup "parse_point" [
@@ -66,6 +59,12 @@ parse_integer = env setup $ \ ~(small, big) ->
       let small = BS.replicate 32 0x00
           big   = BS.replicate 32 0xFF
       pure (small, big)
+
+mul_fixed :: Benchmark
+mul_fixed = bgroup "mul_fixed" [
+    bench "curve:  M(2) * M(2)" $ nf (C.mul 2) 2
+  , bench "curve:  M(2) * M(2 ^ 255 - 19)" $ nf (C.mul 2) (2 ^ 255 - 19)
+  ]
 
 add :: Benchmark
 add = bgroup "add" [
@@ -168,32 +167,36 @@ ecdh = env setup $ \ ~(big, pub) ->
             "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
       pure (big, pub)
 
+
+p :: S.Projective
+p = S.Projective
+  55066263022277343669578718895168534326250603453777594175500187360389116729240
+  32670510020758816978083085130507043184471273380659243275938904335757337482424
+  1
+
+q :: S.Projective
+q = S.Projective
+  112711660439710606056748659173929673102114977341539408544630613555209775888121
+  25583027980570883691656905877401976406448868254816295069919888960541586679410
+  1
+
+r :: S.Projective
+r = S.Projective
+  73305138481390301074068425511419969342201196102229546346478796034582161436904
+  77311080844824646227678701997218206005272179480834599837053144390237051080427
+  1
+
 p_bs :: BS.ByteString
 p_bs = decodeLenient
   "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
-
-p :: S.Projective
-p = case S.parse_point p_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
 
 q_bs :: BS.ByteString
 q_bs = decodeLenient
   "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
 
-q :: S.Projective
-q = case S.parse_point q_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
-
 r_bs :: BS.ByteString
 r_bs = decodeLenient
   "03a2113cf152585d96791a42cdd78782757fbfb5c6b2c11b59857eb4f7fda0b0e8"
-
-r :: S.Projective
-r = case S.parse_point r_bs of
-  Nothing -> error "bang"
-  Just !pt -> pt
 
 s_bs :: BS.ByteString
 s_bs = decodeLenient
@@ -212,7 +215,7 @@ t = case S.parse_point t_bs of
   Nothing -> error "bang"
   Just !pt -> pt
 
-s_sk :: Integer
+s_sk :: W.Wider
 s_sk = parse_int256 . decodeLenient $
   "B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"
 
@@ -235,7 +238,4 @@ s_msg = decodeLenient
 s_aux :: BS.ByteString
 s_aux = decodeLenient
   "0000000000000000000000000000000000000000000000000000000000000001"
-
--- e_msg = decodeLenient "313233343030"
--- e_sig = decodeLenient "3045022100813ef79ccefa9a56f7ba805f0e478584fe5f0dd5f567bc09b5123ccbc983236502206ff18a52dcc0336f7af62400a6dd9b810732baf1ff758000d6f613a556eb31ba"
 

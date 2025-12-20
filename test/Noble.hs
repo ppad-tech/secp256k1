@@ -17,7 +17,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified GHC.Num.Integer as I
+import Data.Word.Wider (Wider(..))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, assertBool, assertFailure, testCase)
 
@@ -77,22 +77,13 @@ execute_invalid_verify tex (label, InvalidVerifyTest {..}) =
         assertBool mempty (not ver)
         assertBool mempty (not ver')
 
-fi :: (Integral a, Num b) => a -> b
-fi = fromIntegral
-{-# INLINE fi #-}
-
 -- parser helper
 toBS :: T.Text -> BS.ByteString
 toBS = decodeLenient . TE.encodeUtf8
 
 -- parser helper
-toSecKey :: T.Text -> Integer
-toSecKey = roll . toBS
-
--- big-endian bytestring decoding
-roll :: BS.ByteString -> Integer
-roll = BS.foldl' unstep 0 where
-  unstep a (fi -> b) = (a `I.integerShiftL` 8) `I.integerOr` b
+toSecKey :: T.Text -> Wider
+toSecKey = unsafe_roll32 . toBS
 
 instance A.FromJSON Ecdsa where
   parseJSON = A.withObject "Ecdsa" $ \m -> Ecdsa
@@ -100,7 +91,7 @@ instance A.FromJSON Ecdsa where
     <*> m .: "invalid"
 
 data ValidTest = ValidTest {
-    vt_d           :: !Integer
+    vt_d           :: !Wider
   , vt_m           :: !BS.ByteString
   , vt_signature   :: !BS.ByteString
   } deriving Show
@@ -127,7 +118,7 @@ instance A.FromJSON InvalidTest where
     <*> fmap (zip [0..]) (m .: "verify")
 
 data InvalidSignTest = InvalidSignTest {
-    ivs_d           :: !Integer
+    ivs_d           :: !Wider
   , ivs_m           :: !BS.ByteString
   } deriving Show
 

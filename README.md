@@ -65,50 +65,29 @@ bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr' (large)
-  time                 1.400 ms   (1.399 ms .. 1.402 ms)
+  time                 48.00 μs   (47.93 μs .. 48.09 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 1.406 ms   (1.404 ms .. 1.408 ms)
-  std dev              5.989 μs   (5.225 μs .. 7.317 μs)
+  mean                 48.01 μs   (47.96 μs .. 48.10 μs)
+  std dev              219.6 ns   (121.9 ns .. 407.9 ns)
 
   benchmarking schnorr/verify_schnorr'
-  time                 720.2 μs   (716.7 μs .. 724.8 μs)
+  time                 131.0 μs   (130.7 μs .. 131.4 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 724.6 μs   (722.0 μs .. 730.4 μs)
-  std dev              12.68 μs   (6.334 μs .. 26.31 μs)
+  mean                 132.0 μs   (131.4 μs .. 133.0 μs)
+  std dev              2.521 μs   (1.745 μs .. 3.350 μs)
+  variance introduced by outliers: 13% (moderately inflated)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 115.3 μs   (115.1 μs .. 115.7 μs)
+  time                 58.25 μs   (58.14 μs .. 58.44 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 116.0 μs   (115.6 μs .. 116.4 μs)
-  std dev              1.367 μs   (1.039 μs .. 1.839 μs)
+  mean                 58.27 μs   (58.19 μs .. 58.44 μs)
+  std dev              383.9 ns   (192.0 ns .. 687.1 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 702.3 μs   (699.9 μs .. 704.9 μs)
+  time                 135.3 μs   (135.2 μs .. 135.5 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 704.9 μs   (702.7 μs .. 708.4 μs)
-  std dev              9.641 μs   (6.638 μs .. 14.04 μs)
-```
-
-In terms of allocations, we get:
-
-```
-schnorr
-
-  Case                   Allocated  GCs
-  sign_schnorr'          3,273,824    0
-  verify_schnorr'        1,667,360    0
-
-ecdsa
-
-  Case                 Allocated  GCs
-  sign_ecdsa'            324,672    0
-  verify_ecdsa'        3,796,328    0
-
-ecdh
-
-  Case          Allocated  GCs
-  ecdh (small)  2,141,736    0
-  ecdh (large)  2,145,464    0
+  mean                 135.5 μs   (135.4 μs .. 135.7 μs)
+  std dev              384.2 ns   (271.7 ns .. 558.1 ns)
 ```
 
 ## Security
