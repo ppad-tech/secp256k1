@@ -48,70 +48,106 @@ main = W.mainWith $ do
   ecdh
 
 parse_int256 :: W.Weigh ()
-parse_int256 = W.wgroup "parse_int256" $ do
-  W.func' "parse_int (small)" parse_int (BS.replicate 32 0x00)
-  W.func' "parse_int (big)" parse_int (BS.replicate 32 0xFF)
+parse_int256 =
+  let !a = BS.replicate 32 0x00
+      !b = BS.replicate 32 0xFF
+  in  W.wgroup "parse_int256" $ do
+        W.func' "parse_int (small)" parse_int a
+        W.func' "parse_int (big)" parse_int b
 
 add :: W.Weigh ()
-add = W.wgroup " add" $ do
-  W.func "2 p (double, trivial projective point)" (S.add p) p
-  W.func "2 r (double, nontrivial projective point)" (S.add r) r
-  W.func "p + q (trivial projective points)" (S.add p) q
-  W.func "p + s (nontrivial mixed points)" (S.add p) s
-  W.func "s + r (nontrivial projective points)" (S.add s) r
+add =
+  let !pl = p
+      !rl = r
+      !ql = q
+      !sl = s
+  in  W.wgroup " add" $ do
+        W.func "2 p (double, trivial projective point)" (S.add pl) pl
+        W.func "2 r (double, nontrivial projective point)" (S.add rl) rl
+        W.func "p + q (trivial projective points)" (S.add pl) ql
+        W.func "p + s (nontrivial mixed points)" (S.add pl) sl
+        W.func "s + r (nontrivial projective points)" (S.add sl) rl
 
 mul :: W.Weigh ()
-mul = W.wgroup "mul" $ do
-  W.func "2 G" (S.mul S._CURVE_G) 2
-  W.func "(2 ^ 255 - 19) G" (S.mul S._CURVE_G) big
+mul =
+  let !g = S._CURVE_G
+      !t = 2
+      !bigl = big
+  in  W.wgroup "mul" $ do
+        W.func "2 G" (S.mul g) t
+        W.func "(2 ^ 255 - 19) G" (S.mul g) bigl
 
 mul_unsafe :: W.Weigh ()
-mul_unsafe = W.wgroup "mul_unsafe" $ do
-  W.func "2 G" (S.mul_unsafe S._CURVE_G) 2
-  W.func "(2 ^ 255 - 19) G" (S.mul_unsafe S._CURVE_G) big
+mul_unsafe =
+  let !g = S._CURVE_G
+      !t = 2
+      !bigl = big
+  in  W.wgroup "mul_unsafe" $ do
+        W.func "2 G" (S.mul_unsafe g) t
+        W.func "(2 ^ 255 - 19) G" (S.mul_unsafe g) bigl
 
 mul_wnaf :: W.Weigh ()
-mul_wnaf = W.wgroup "mul_wnaf" $ do
-  W.value "precompute" S.precompute -- XX ?
-  W.func "2 G" (S.mul_wnaf tex) 2
-  W.func "(2 ^ 255 - 19) G" (S.mul_wnaf tex) big
+mul_wnaf =
+  let !t = 2
+      !bigl = big
+      !con = tex
+  in  W.wgroup "mul_wnaf" $ do
+        W.value "precompute" S.precompute -- XX ?
+        W.func "2 G" (S.mul_wnaf con) t
+        W.func "(2 ^ 255 - 19) G" (S.mul_wnaf con) bigl
 
 derive_pub :: W.Weigh ()
-derive_pub = W.wgroup "derive_pub" $ do
-  W.func "sk = 2" S.derive_pub 2
-  W.func "sk = 2 ^ 255 - 19" S.derive_pub big
-  W.func "wnaf, sk = 2" (S.derive_pub' tex) 2
-  W.func "wnaf, sk = 2 ^ 255 - 19" (S.derive_pub' tex) big
+derive_pub =
+  let !t = 2
+      !bigl = big
+      !con = tex
+  in  W.wgroup "derive_pub" $ do
+        W.func "sk = 2" S.derive_pub t
+        W.func "sk = 2 ^ 255 - 19" S.derive_pub bigl
+        W.func "wnaf, sk = 2" (S.derive_pub' con) t
+        W.func "wnaf, sk = 2 ^ 255 - 19" (S.derive_pub' con) bigl
 
 schnorr :: W.Weigh ()
-schnorr = W.wgroup "schnorr" $ do
-  W.func "sign_schnorr (small)" (S.sign_schnorr 2 s_msg) s_aux
-  W.func "sign_schnorr (large)" (S.sign_schnorr big s_msg) s_aux
-  W.func "sign_schnorr' (small)" (S.sign_schnorr' tex 2 s_msg) s_aux
-  W.func "sign_schnorr' (large)" (S.sign_schnorr' tex big s_msg) s_aux
-  W.func "verify_schnorr" (S.verify_schnorr s_msg s_pk) s_sig
-  W.func "verify_schnorr'" (S.verify_schnorr' tex s_msg s_pk) s_sig
+schnorr =
+  let !t = 2
+      !s_msgl = s_msg
+      !s_auxl = s_aux
+      !s_sigl = s_sig
+      !s_pkl  = s_pk
+      !con    = tex
+      !bigl   = big
+  in  W.wgroup "schnorr" $ do
+        W.func "sign_schnorr (small)" (S.sign_schnorr t s_msgl) s_auxl
+        W.func "sign_schnorr (large)" (S.sign_schnorr bigl s_msgl) s_auxl
+        W.func "sign_schnorr' (small)" (S.sign_schnorr' con t s_msgl) s_auxl
+        W.func "sign_schnorr' (large)" (S.sign_schnorr' con big s_msgl) s_auxl
+        W.func "verify_schnorr" (S.verify_schnorr s_msgl s_pkl) s_sigl
+        W.func "verify_schnorr'" (S.verify_schnorr' con s_msgl s_pkl) s_sigl
 
 ecdsa :: W.Weigh ()
-ecdsa = W.wgroup "ecdsa" $ do
-    W.func "sign_ecdsa (small)" (S.sign_ecdsa 2) s_msg
-    W.func "sign_ecdsa (large)" (S.sign_ecdsa big) s_msg
-    W.func "sign_ecdsa' (small)" (S.sign_ecdsa' tex 2) s_msg
-    W.func "sign_ecdsa' (large)" (S.sign_ecdsa' tex big) s_msg
-    W.func "verify_ecdsa" (S.verify_ecdsa msg pub) sig
-    W.func "verify_ecdsa'" (S.verify_ecdsa' tex msg pub) sig
-  where
-    Just pub = S.derive_pub big
-    msg = "i approve of this message"
-    Just sig = S.sign_ecdsa big s_msg
+ecdsa =
+  let !t = 2
+      !s_msgl = s_msg
+      !con    = tex
+      !bigl   = big
+      !msg = "i approve of this message"
+      Just !pub = S.derive_pub bigl
+      Just !sig = S.sign_ecdsa bigl s_msgl
+  in   W.wgroup "ecdsa" $ do
+         W.func "sign_ecdsa (small)" (S.sign_ecdsa t) s_msgl
+         W.func "sign_ecdsa (large)" (S.sign_ecdsa bigl) s_msgl
+         W.func "sign_ecdsa' (small)" (S.sign_ecdsa' con t) s_msgl
+         W.func "sign_ecdsa' (large)" (S.sign_ecdsa' con bigl) s_msgl
+         W.func "verify_ecdsa" (S.verify_ecdsa msg pub) sig
+         W.func "verify_ecdsa'" (S.verify_ecdsa' tex msg pub) sig
 
 ecdh :: W.Weigh ()
 ecdh = W.wgroup "ecdh" $ do
     W.func "ecdh (small)" (S.ecdh pub) 2
     W.func "ecdh (large)" (S.ecdh pub) b
   where
-    b = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
-    Just pub = S.parse_point . decodeLenient $
+    !b = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
+    Just !pub = S.parse_point . decodeLenient $
       "bd02b9dfc8ef760708950bd972f2dc244893b61b6b46c3b19be1b2da7b034ac5"
 
 s_sk :: Wider
