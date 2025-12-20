@@ -129,7 +129,7 @@ differential attributable to benchmarking noise:
   std dev              54.35 ns   (43.90 ns .. 68.18 ns)
 ```
 
-``
+```
   benchmarking schnorr/sign_schnorr' (small)
   time                 47.33 μs   (47.04 μs .. 47.57 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
