@@ -57,37 +57,35 @@ Haddocks (API documentation, etc.) are hosted at
 
 ## Performance
 
-The aim is best-in-class performance for pure, highly-auditable Haskell
-code.
+The aim is best-in-class performance for pure Haskell code.
 
 Current benchmark figures on an M4 MacBook Air look like (use `cabal
 bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr' (large)
-  time                 48.00 μs   (47.93 μs .. 48.09 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 48.01 μs   (47.96 μs .. 48.10 μs)
-  std dev              219.6 ns   (121.9 ns .. 407.9 ns)
+  time                 77.54 μs   (77.14 μs .. 78.16 μs)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 77.27 μs   (77.11 μs .. 77.63 μs)
+  std dev              802.7 ns   (166.4 ns .. 1.331 μs)
 
   benchmarking schnorr/verify_schnorr'
-  time                 131.0 μs   (130.7 μs .. 131.4 μs)
+  time                 161.1 μs   (160.9 μs .. 161.3 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 132.0 μs   (131.4 μs .. 133.0 μs)
-  std dev              2.521 μs   (1.745 μs .. 3.350 μs)
-  variance introduced by outliers: 13% (moderately inflated)
+  mean                 160.9 μs   (160.6 μs .. 161.0 μs)
+  std dev              618.3 ns   (374.1 ns .. 1.070 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 58.25 μs   (58.14 μs .. 58.44 μs)
+  time                 72.37 μs   (72.32 μs .. 72.43 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 58.27 μs   (58.19 μs .. 58.44 μs)
-  std dev              383.9 ns   (192.0 ns .. 687.1 ns)
+  mean                 72.50 μs   (72.43 μs .. 72.60 μs)
+  std dev              268.5 ns   (167.6 ns .. 413.0 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 135.3 μs   (135.2 μs .. 135.5 μs)
+  time                 151.8 μs   (151.6 μs .. 152.0 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 135.5 μs   (135.4 μs .. 135.7 μs)
-  std dev              384.2 ns   (271.7 ns .. 558.1 ns)
+  mean                 152.0 μs   (151.8 μs .. 152.3 μs)
+  std dev              781.7 ns   (421.4 ns .. 1.175 μs)
 ```
 
 ## Security
@@ -105,74 +103,96 @@ faulty nonce generation or malicious inputs for signature or public
 key parameters.
 
 Timing-sensitive operations, e.g. elliptic curve scalar multiplication,
-have been explicitly written so as to execute algorithmically in time
-constant with respect to secret data. Moreover, fixed-size (256-bit)
-wide words with constant-time operations provided by [ppad-fixed][fixed]
-are used exclusively internally, avoiding timing variations incurred by
-use of GHC's variable-size Integer type.
+have been explicitly written so as to execute in time constant with
+respect to secret data. Moreover, fixed-size (256-bit) wide words with
+constant-time operations provided by [ppad-fixed][fixed] are used
+exclusively internally, avoiding timing variations incurred by use of
+GHC's variable-size Integer type.
 
-Benchmarks validate the constant-time implementation, with any timing
-differential attributable to benchmarking noise:
+Criterion benchmarks attest that any timing variation between cases with
+differing inputs is attributable to noise:
 
 ```
   benchmarking derive_pub/wnaf, sk = 2
-  time                 12.74 μs   (12.58 μs .. 13.00 μs)
-                       0.999 R²   (0.996 R² .. 1.000 R²)
-  mean                 12.65 μs   (12.60 μs .. 12.84 μs)
-  std dev              290.1 ns   (107.0 ns .. 573.0 ns)
-  variance introduced by outliers: 23% (moderately inflated)
+  time                 27.08 μs   (27.07 μs .. 27.10 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 27.10 μs   (27.09 μs .. 27.12 μs)
+  std dev              60.01 ns   (41.51 ns .. 98.05 ns)
 
   benchmarking derive_pub/wnaf, sk = 2 ^ 255 - 19
-  time                 12.64 μs   (12.62 μs .. 12.66 μs)
+  time                 27.09 μs   (27.07 μs .. 27.11 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 12.64 μs   (12.62 μs .. 12.66 μs)
-  std dev              54.35 ns   (43.90 ns .. 68.18 ns)
-```
+  mean                 27.09 μs   (27.08 μs .. 27.12 μs)
+  std dev              61.41 ns   (34.20 ns .. 116.9 ns)
 
-```
   benchmarking schnorr/sign_schnorr' (small)
-  time                 47.33 μs   (47.04 μs .. 47.57 μs)
+  time                 77.40 μs   (77.11 μs .. 77.87 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 47.17 μs   (47.03 μs .. 47.32 μs)
-  std dev              491.1 ns   (410.2 ns .. 615.3 ns)
+  mean                 77.32 μs   (77.25 μs .. 77.53 μs)
+  std dev              366.0 ns   (197.5 ns .. 704.2 ns)
 
   benchmarking schnorr/sign_schnorr' (large)
-  time                 47.37 μs   (47.20 μs .. 47.54 μs)
+  time                 77.39 μs   (77.33 μs .. 77.45 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 47.21 μs   (47.14 μs .. 47.31 μs)
-  std dev              286.5 ns   (224.0 ns .. 349.4 ns)
-```
+  mean                 77.36 μs   (77.31 μs .. 77.42 μs)
+  std dev              178.8 ns   (147.8 ns .. 222.9 ns)
 
-```
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 58.12 μs   (57.89 μs .. 58.29 μs)
+  time                 72.32 μs   (72.24 μs .. 72.42 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 57.77 μs   (57.61 μs .. 57.91 μs)
-  std dev              505.6 ns   (420.2 ns .. 639.8 ns)
+  mean                 72.42 μs   (72.38 μs .. 72.50 μs)
+  std dev              199.4 ns   (151.0 ns .. 298.5 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 58.03 μs   (57.86 μs .. 58.19 μs)
+  time                 72.42 μs   (72.31 μs .. 72.56 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 57.87 μs   (57.74 μs .. 57.99 μs)
-  std dev              406.9 ns   (341.1 ns .. 512.9 ns)
-```
+  mean                 72.41 μs   (72.37 μs .. 72.49 μs)
+  std dev              199.9 ns   (141.9 ns .. 344.1 ns)
 
-```
   benchmarking ecdh/ecdh (small)
-  time                 158.6 μs   (158.4 μs .. 159.0 μs)
+  time                 257.2 μs   (256.9 μs .. 257.5 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 158.8 μs   (158.4 μs .. 159.4 μs)
-  std dev              1.586 μs   (1.139 μs .. 2.612 μs)
+  mean                 257.0 μs   (256.8 μs .. 257.2 μs)
+  std dev              667.5 ns   (480.7 ns .. 973.1 ns)
 
   benchmarking ecdh/ecdh (large)
-  time                 159.2 μs   (158.9 μs .. 159.4 μs)
+  time                 256.9 μs   (256.7 μs .. 257.0 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 158.8 μs   (158.6 μs .. 159.0 μs)
-  std dev              584.2 ns   (496.4 ns .. 689.3 ns)
+  mean                 256.9 μs   (256.7 μs .. 257.0 μs)
+  std dev              369.9 ns   (278.8 ns .. 570.4 ns)
 ```
 
-Though we rigorously target constant-time execution, take reasonable
-security precautions as appropriate. You shouldn't deploy the
+Note also that care has been taken to ensure that allocation is held
+constant across input sizes for all sensitive operations:
+
+```
+  derive_pub
+
+    Case                     Allocated  GCs
+    wnaf, sk = 2                   304    0
+    wnaf, sk = 2 ^ 255 - 19        304    0
+
+  schnorr
+
+    Case                   Allocated  GCs
+    sign_schnorr' (small)     27,104    0
+    sign_schnorr' (large)     27,104    0
+
+  ecdsa
+
+    Case                 Allocated  GCs
+    sign_ecdsa' (small)     61,624    0
+    sign_ecdsa' (large)     61,624    0
+
+  ecdh
+
+    Case          Allocated  GCs
+    ecdh (small)      1,880    0
+    ecdh (large)      1,880    0
+```
+
+Though constant-resource execution is enforced rigorously, take
+reasonable security precautions as appropriate. You shouldn't deploy the
 implementations within in any situation where they could easily be used
 as an oracle to construct a [timing attack][timea], and you shouldn't
 give sophisticated malicious actors [access to your computer][flurl].
