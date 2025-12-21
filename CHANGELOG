@@ -1,5 +1,19 @@
 # Changelog
 
+- 0.5.0 (2025-12-21)
+  * We get a significant upgrade to all functionality by pulling in the
+    ppad-fixed library for large unsigned and Montgomery-form integers.
+    Constant-time and allocation properties are made much more rigorous
+    across the board, as we no longer depend on 'Integer' whatsoever.
+
+    This version also improves performance radically throughout. A
+    summary of the speedups achieved:
+
+    sign_schnorr:   ~7.1x speedup
+    verify_schnorr: ~4.5x speedup
+    sign_ecdsa:     ~1.5x speedup
+    verify_ecdsa:   ~4.5x speedup
+
 - 0.4.0 (2025-06-21)
   * Scalar multiplication, signing, verifying, and ECHD functions are now
     all total, returning 'Nothing' when supplied with invalid inputs.
