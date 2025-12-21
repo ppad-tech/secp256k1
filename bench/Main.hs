@@ -27,9 +27,11 @@ main :: IO ()
 main = defaultMain [
     parse_point
   , add
+  , double
   , mul
-  , precompute
+  , mul_vartime
   , mul_wnaf
+  , precompute
   , derive_pub
   , schnorr
   , ecdsa
@@ -67,19 +69,39 @@ mul_fixed = bgroup "mul_fixed" [
   ]
 
 add :: Benchmark
-add = bgroup "add" [
-    bench "2 p (double, trivial projective point)" $ nf (S.add p) p
-  , bench "2 r (double, nontrivial projective point)" $ nf (S.add r) r
-  , bench "p + q (trivial projective points)" $ nf (S.add p) q
-  , bench "p + s (nontrivial mixed points)" $ nf (S.add p) s
-  , bench "s + r (nontrivial projective points)" $ nf (S.add s) r
-  ]
+add = env setup $ \ ~(!pl, !ql, !rl, !sl) ->
+    bgroup "add" [
+      bench "p + q (trivial projective points)" $ nf (S.add pl) ql
+    , bench "p + s (nontrivial mixed points)" $ nf (S.add pl) sl
+    , bench "s + r (nontrivial projective points)" $ nf (S.add sl) rl
+    ]
+  where
+    setup = pure (p, q, r, s)
+
+double :: Benchmark
+double = env setup $ \ ~(!pl, !rl) ->
+    bgroup "double" [
+      bench "2 p (double, trivial projective point)" $ nf (S.add pl) pl
+    , bench "2 r (double, nontrivial projective point)" $ nf (S.add rl) rl
+    ]
+  where
+    setup = pure (p, r)
 
 mul :: Benchmark
 mul = env setup $ \x ->
     bgroup "mul" [
       bench "2 G" $ nf (S.mul S._CURVE_G) 2
     , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
+    ]
+  where
+    setup = pure . parse_int256 $ decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+
+mul_vartime :: Benchmark
+mul_vartime = env setup $ \x ->
+    bgroup "mul_vartime" [
+      bench "2 G" $ nf (S.mul_vartime S._CURVE_G) 2
+    , bench "(2 ^ 255 - 19) G" $ nf (S.mul_vartime S._CURVE_G) x
     ]
   where
     setup = pure . parse_int256 $ decodeLenient

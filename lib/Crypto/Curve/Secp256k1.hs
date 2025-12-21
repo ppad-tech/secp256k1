@@ -27,7 +27,6 @@ module Crypto.Curve.Secp256k1 (
   -- * Field and group parameters
     _CURVE_Q
   , _CURVE_P
-  , modQ
 
   -- * secp256k1 points
   , Pub
@@ -35,6 +34,8 @@ module Crypto.Curve.Secp256k1 (
   , derive_pub'
   , _CURVE_G
   , _CURVE_ZERO
+  , ge
+  , fe
 
   -- * Parsing
   , parse_int256
@@ -72,9 +73,11 @@ module Crypto.Curve.Secp256k1 (
   -- Elliptic curve group operations
   , neg
   , add
+  , add_mixed
+  , add_proj
   , double
   , mul
-  , mul_unsafe
+  , mul_vartime
   , mul_wnaf
 
   -- Coordinate systems and transformations
@@ -91,21 +94,21 @@ module Crypto.Curve.Secp256k1 (
   , roll32
   , unsafe_roll32
   , unroll32
+  , select_proj
   ) where
 
 import Control.Monad (guard)
 import Control.Monad.ST
 import qualified Crypto.DRBG.HMAC as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
-import Data.Bits ((.&.))
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
 import qualified Data.Choice as CT
 import qualified Data.Maybe as M
-import qualified Data.Primitive.Array as A
-import Data.STRef
+import Data.Primitive.ByteArray (ByteArray(..), MutableByteArray(..))
+import qualified Data.Primitive.ByteArray as BA
 import Data.Word (Word8)
 import Data.Word.Limb (Limb(..))
 import qualified Data.Word.Limb as L
@@ -114,24 +117,35 @@ import qualified Data.Word.Wider as W
 import qualified Foreign.Storable as Storable (pokeByteOff)
 import qualified GHC.Exts as Exts
 import GHC.Generics
-import qualified GHC.Int (Int(..))
 import qualified GHC.Word (Word(..), Word8(..))
 import qualified Numeric.Montgomery.Secp256k1.Curve as C
 import qualified Numeric.Montgomery.Secp256k1.Scalar as S
 import Prelude hiding (sqrt)
+
+-- convenience synonyms -------------------------------------------------------
+
+-- Unboxed Wider/Montgomery synonym.
+type Limb4 = (# Limb, Limb, Limb, Limb #)
+
+-- Unboxed Projective synonym.
+type Proj = (# Limb4, Limb4, Limb4 #)
+
+pattern Zero :: Wider
+pattern Zero = Wider Z
+
+pattern Z :: Limb4
+pattern Z = (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
+
+pattern P :: Limb4 -> Limb4 -> Limb4 -> Projective
+pattern P x y z =
+  Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
+{-# COMPLETE P #-}
 
 -- utilities ------------------------------------------------------------------
 
 fi :: (Integral a, Num b) => a -> b
 fi = fromIntegral
 {-# INLINE fi #-}
-
--- dumb strict pair
-data Pair a b = Pair !a !b
-
--- convenience pattern
-pattern Zero :: Wider
-pattern Zero = Wider (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
 
 -- convert a Word8 to a Limb
 limb :: Word8 -> Limb
@@ -154,10 +168,6 @@ word8s l s =
 word8_to_wider :: Word8 -> Wider
 word8_to_wider w = Wider (# limb w, Limb 0##, Limb 0##, Limb 0## #)
 {-# INLINABLE word8_to_wider #-}
-
-wider_to_int :: Wider -> Int
-wider_to_int (Wider (# Limb l, _, _, _ #)) = GHC.Int.I# (Exts.word2Int# l)
-{-# INLINABLE wider_to_int #-}
 
 -- unsafely extract the first 64-bit word from a big-endian-encoded bytestring
 unsafe_word0 :: BS.ByteString -> Limb
@@ -281,6 +291,7 @@ modQ = S.from . S.to
 -- bytewise xor
 xor :: BS.ByteString -> BS.ByteString -> BS.ByteString
 xor = BS.packZipWith B.xor
+{-# INLINABLE xor #-}
 
 -- constants ------------------------------------------------------------------
 
@@ -327,7 +338,7 @@ fe n = n > 0 && n < _CURVE_P
 
 -- Is group element?
 ge :: Wider -> Bool
-ge n = n > 0 && n < _CURVE_Q
+ge (Wider n) = CT.decide (ge# n)
 {-# INLINE ge #-}
 
 -- curve points ---------------------------------------------------------------
@@ -357,12 +368,9 @@ type Pub = Projective
 
 -- Convert to affine coordinates.
 affine :: Projective -> Affine
-affine = \case
-  Projective 0 1 0 -> Affine 0 0
-  Projective x y 1 -> Affine x y
-  Projective x y z ->
-    let !iz = C.inv z
-    in  Affine (x * iz) (y * iz)
+affine (Projective x y z) =
+  let !iz = C.inv z
+  in  Affine (x * iz) (y * iz)
 {-# INLINABLE affine #-}
 
 -- Convert to projective coordinates.
@@ -373,13 +381,15 @@ projective = \case
 
 -- | secp256k1 generator point.
 _CURVE_G :: Projective
-_CURVE_G = Projective x y C.one where
+_CURVE_G = Projective x y z where
   !x = C.Montgomery
     (# Limb 15507633332195041431##, Limb  2530505477788034779##
     ,  Limb 10925531211367256732##, Limb 11061375339145502536## #)
   !y = C.Montgomery
     (# Limb 12780836216951778274##, Limb 10231155108014310989##
     ,  Limb 8121878653926228278##,  Limb 14933801261141951190## #)
+  !z = C.Montgomery
+    (# Limb 0x1000003D1##, Limb 0##, Limb 0##, Limb 0## #)
 
 -- | secp256k1 zero point, point at infinity, or monoidal identity.
 _CURVE_ZERO :: Projective
@@ -424,215 +434,261 @@ lift_vartime x = do
 even_y_vartime :: Projective -> Projective
 even_y_vartime p = case affine p of
   Affine _ (C.retr -> y)
-    | CT.decide (W.odd y)  -> neg p -- XX
+    | CT.decide (W.odd y) -> neg p
     | otherwise -> p
+
+-- Constant-time selection of Projective points.
+select_proj :: Projective -> Projective -> CT.Choice -> Projective
+select_proj (P ax ay az) (P bx by bz) c =
+  P (W.select# ax bx c) (W.select# ay by c) (W.select# az bz c)
+{-# INLINE select_proj #-}
+
+-- unboxed internals ----------------------------------------------------------
+
+-- algo 7, renes et al, 2015
+add_proj# :: Proj -> Proj -> Proj
+add_proj# (# x1, y1, z1 #) (# x2, y2, z2 #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0a  = C.mul# x1 x2
+      !t1a  = C.mul# y1 y2
+      !t2a  = C.mul# z1 z2
+      !t3a  = C.add# x1 y1
+      !t4a  = C.add# x2 y2
+      !t3b  = C.mul# t3a t4a
+      !t4b  = C.add# t0a t1a
+      !t3c  = C.sub# t3b t4b
+      !t4c  = C.add# y1 z1
+      !x3a  = C.add# y2 z2
+      !t4d  = C.mul# t4c x3a
+      !x3b  = C.add# t1a t2a
+      !t4e  = C.sub# t4d x3b
+      !x3c  = C.add# x1 z1
+      !y3a  = C.add# x2 z2
+      !x3d  = C.mul# x3c y3a
+      !y3b  = C.add# t0a t2a
+      !y3c  = C.sub# x3d y3b
+      !x3e  = C.add# t0a t0a
+      !t0b  = C.add# x3e t0a
+      !t2b  = C.mul# b3 t2a
+      !z3a  = C.add# t1a t2b
+      !t1b  = C.sub# t1a t2b
+      !y3d  = C.mul# b3 y3c
+      !x3f  = C.mul# t4e y3d
+      !t2c  = C.mul# t3c t1b
+      !x3g  = C.sub# t2c x3f
+      !y3e  = C.mul# y3d t0b
+      !t1c  = C.mul# t1b z3a
+      !y3f  = C.add# t1c y3e
+      !t0c  = C.mul# t0b t3c
+      !z3b  = C.mul# z3a t4e
+      !z3c  = C.add# z3b t0c
+  in  (# x3g, y3f, z3c #)
+{-# INLINE add_proj# #-}
+
+-- algo 8, renes et al, 2015
+add_mixed# :: Proj -> Proj -> Proj
+add_mixed# (# x1, y1, z1 #) (# x2, y2, _z2 #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0a  = C.mul# x1 x2
+      !t1a  = C.mul# y1 y2
+      !t3a  = C.add# x2 y2
+      !t4a  = C.add# x1 y1
+      !t3b  = C.mul# t3a t4a
+      !t4b  = C.add# t0a t1a
+      !t3c  = C.sub# t3b t4b
+      !t4c  = C.mul# y2 z1
+      !t4d  = C.add# t4c y1
+      !y3a  = C.mul# x2 z1
+      !y3b  = C.add# y3a x1
+      !x3a  = C.add# t0a t0a
+      !t0b  = C.add# x3a t0a
+      !t2a  = C.mul# b3 z1
+      !z3a  = C.add# t1a t2a
+      !t1b  = C.sub# t1a t2a
+      !y3c  = C.mul# b3 y3b
+      !x3b  = C.mul# t4d y3c
+      !t2b  = C.mul# t3c t1b
+      !x3c  = C.sub# t2b x3b
+      !y3d  = C.mul# y3c t0b
+      !t1c  = C.mul# t1b z3a
+      !y3e  = C.add# t1c y3d
+      !t0c  = C.mul# t0b t3c
+      !z3b  = C.mul# z3a t4d
+      !z3c  = C.add# z3b t0c
+  in  (# x3c, y3e, z3c #)
+{-# INLINE add_mixed# #-}
+
+-- algo 9, renes et al, 2015
+double# :: Proj -> Proj
+double# (# x, y, z #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0  = C.sqr# y
+      !z3a = C.add# t0 t0
+      !z3b = C.add# z3a z3a
+      !z3c = C.add# z3b z3b
+      !t1  = C.mul# y z
+      !t2a = C.sqr# z
+      !t2b = C.mul# b3 t2a
+      !x3a = C.mul# t2b z3c
+      !y3a = C.add# t0 t2b
+      !z3d = C.mul# t1 z3c
+      !t1b = C.add# t2b t2b
+      !t2c = C.add# t1b t2b
+      !t0b = C.sub# t0 t2c
+      !y3b = C.mul# t0b y3a
+      !y3c = C.add# x3a y3b
+      !t1c = C.mul# x y
+      !x3b = C.mul# t0b t1c
+      !x3c = C.add# x3b x3b
+  in  (# x3c, y3c, z3d #)
+{-# INLINE double# #-}
+
+select_proj# :: Proj -> Proj -> CT.Choice -> Proj
+select_proj# (# ax, ay, az #) (# bx, by, bz #) c =
+  (# W.select# ax bx c, W.select# ay by c, W.select# az bz c #)
+{-# INLINE select_proj# #-}
+
+neg# :: Proj -> Proj
+neg# (# x, y, z #) = (# x, C.neg# y, z #)
+{-# INLINE neg# #-}
+
+mul# :: Proj -> Limb4 -> (# () | Proj #)
+mul# (# px, py, pz #) s
+    | CT.decide (CT.not# (ge# s)) = (# () | #)
+    | otherwise =
+        let !(P gx gy gz) = _CURVE_G
+            !(C.Montgomery o) = C.one
+        in  loop (0 :: Int) (# Z, o, Z #) (# gx, gy, gz #) (# px, py, pz #) s
+  where
+    loop !j !a !f !d !_SECRET
+      | j == _CURVE_Q_BITS = (# | a #)
+      | otherwise =
+          let !nd = double# d
+              !(# nm, lsb_set #) = W.shr1_c# _SECRET
+              !nacc = select_proj# a (add_proj# a d) lsb_set
+              !nf   = select_proj# (add_proj# f d) f lsb_set
+          in  loop (succ j) nacc nf nd nm
+{-# INLINE mul# #-}
+
+ge# :: Limb4 -> CT.Choice
+ge# n =
+  let !(Wider q) = _CURVE_Q
+  in  CT.and# (W.gt# n Z) (W.lt# n q)
+{-# INLINE ge# #-}
+
+mul_wnaf# :: ByteArray -> Int -> Limb4 -> (# () | Proj #)
+mul_wnaf# ctxArray ctxW ls
+    | CT.decide (CT.not# (ge# ls)) = (# () | #)
+    | otherwise =
+        let !(P zx zy zz) = _CURVE_ZERO
+            !(P gx gy gz) = _CURVE_G
+        in  (# | loop 0 (# zx, zy, zz #) (# gx, gy, gz #) ls #)
+  where
+    !one                  = (# Limb 1##, Limb 0##, Limb 0##, Limb 0## #)
+    !wins                 = fi (256 `quot` ctxW + 1)
+    !size@(GHC.Word.W# s) = 2 ^ (ctxW - 1)
+    !(GHC.Word.W# mask)   = 2 ^ ctxW - 1
+    !(GHC.Word.W# texW)   = fi ctxW
+    !(GHC.Word.W# mnum)   = 2 ^ ctxW
+
+    loop !j@(GHC.Word.W# w) !acc !f !n@(# Limb lo, _, _, _ #)
+      | j == wins = acc
+      | otherwise =
+          let !(GHC.Word.W# off0) = j * size
+              !b0          = Exts.and# lo mask
+              !bor         = CT.from_word_gt# b0 s
+
+              !(# n0, _ #) = W.shr_limb# n (Exts.word2Int# texW)
+              !n0_plus_1   = W.add_w# n0 one
+              !n1          = W.select# n0 n0_plus_1 bor
+
+              !abs_b       = CT.select_word# b0 (Exts.minusWord# mnum b0) bor
+              !is_zero     = CT.from_word_eq# b0 0##
+              !c0          = CT.from_word# (Exts.and# w 1##)
+              !off_nz      = Exts.minusWord# (Exts.plusWord# off0 abs_b) 1##
+              !off         = CT.select_word# off0 off_nz (CT.not# is_zero)
+
+              !pr          = index_proj# ctxArray (Exts.word2Int# off)
+              !neg_pr      = neg# pr
+              !pt_zero     = select_proj# pr neg_pr c0
+              !pt_nonzero  = select_proj# pr neg_pr bor
+
+              !f_added     = add_proj# f pt_zero
+              !acc_added   = add_proj# acc pt_nonzero
+              !nacc        = select_proj# acc_added acc is_zero
+              !nf          = select_proj# f f_added is_zero
+          in  loop (succ j) nacc nf n1
+{-# INLINE mul_wnaf# #-}
+
+-- retrieve a point (as an unboxed tuple) from a context array
+index_proj# :: ByteArray -> Exts.Int# -> Proj
+index_proj# (ByteArray arr#) i# =
+  let !base# = i# Exts.*# 12#
+      !x = (# Limb (Exts.indexWordArray# arr# base#)
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 01#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 02#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 03#)) #)
+      !y = (# Limb (Exts.indexWordArray# arr# (base# Exts.+# 04#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 05#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 06#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 07#)) #)
+      !z = (# Limb (Exts.indexWordArray# arr# (base# Exts.+# 08#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 09#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 10#))
+            , Limb (Exts.indexWordArray# arr# (base# Exts.+# 11#)) #)
+  in  (# x, y, z #)
+{-# INLINE index_proj# #-}
 
 -- ec arithmetic --------------------------------------------------------------
 
 -- Negate secp256k1 point.
 neg :: Projective -> Projective
-neg (Projective x y z) = Projective x (negate y) z
-
--- Constant-time selection of Projective points.
-select_proj :: Projective -> Projective -> CT.Choice -> Projective
-select_proj (Projective ax ay az) (Projective bx by bz) c =
-  Projective (C.select ax bx c) (C.select ay by c) (C.select az bz c)
-{-# INLINE select_proj #-}
+neg (P x y z) =
+  let !(# px, py, pz #) = neg# (# x, y, z #)
+  in  P px py pz
+{-# INLINABLE neg #-}
 
 -- Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
-add p q@(Projective _ _ z)
-  | z == 1 = add_mixed p q   -- algo 8
-  | otherwise = add_proj p q -- algo 7
+add p q = add_proj p q
+{-# INLINABLE add #-}
 
 -- algo 7, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
 --
 -- https://eprint.iacr.org/2015/1060.pdf
 add_proj :: Projective -> Projective -> Projective
-add_proj (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
-  x3 <- newSTRef 0
-  y3 <- newSTRef 0
-  z3 <- newSTRef 0
-  t0 <- newSTRef (x1 * x2) -- 1
-  t1 <- newSTRef (y1 * y2)
-  t2 <- newSTRef (z1 * z2)
-  t3 <- newSTRef (x1 + y1) -- 4
-  t4 <- newSTRef (x2 + y2)
-  readSTRef t4 >>= \r4 ->
-    modifySTRef' t3 (\r3 -> r3 * r4)
-  readSTRef t0 >>= \r0 ->
-    readSTRef t1 >>= \r1 ->
-    writeSTRef t4 (r0 + r1)
-  readSTRef t4 >>= \r4 ->
-    modifySTRef' t3 (\r3 -> r3 - r4) -- 8
-  writeSTRef t4 (y1 + z1)
-  writeSTRef x3 (y2 + z2)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' t4 (\r4 -> r4 * rx3)
-  readSTRef t1 >>= \r1 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef x3 (r1 + r2) -- 12
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' t4 (\r4 -> r4 - rx3)
-  writeSTRef x3 (x1 + z1)
-  writeSTRef y3 (x2 + z2)
-  readSTRef y3 >>= \ry3 ->
-    modifySTRef' x3 (\rx3 -> rx3 * ry3) -- 16
-  readSTRef t0 >>= \r0 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef y3 (r0 + r2)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' y3 (\ry3 -> rx3 - ry3)
-  readSTRef t0 >>= \r0 ->
-    writeSTRef x3 (r0 + r0)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef t0 (\r0 -> rx3 + r0) -- 20
-  modifySTRef' t2 (\r2 -> _CURVE_Bm3 * r2)
-  readSTRef t1 >>= \r1 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef z3 (r1 + r2)
-  readSTRef t2 >>= \r2 ->
-    modifySTRef' t1 (\r1 -> r1 - r2)
-  modifySTRef' y3 (\ry3 -> _CURVE_Bm3 * ry3) -- 24
-  readSTRef t4 >>= \r4 ->
-    readSTRef y3 >>= \ry3 ->
-    writeSTRef x3 (r4 * ry3)
-  readSTRef t3 >>= \r3 ->
-    readSTRef t1 >>= \r1 ->
-    writeSTRef t2 (r3 * r1)
-  readSTRef t2 >>= \r2 ->
-    modifySTRef' x3 (\rx3 -> r2 - rx3)
-  readSTRef t0 >>= \r0 ->
-    modifySTRef' y3 (\ry3 -> ry3 * r0) -- 28
-  readSTRef z3 >>= \rz3 ->
-    modifySTRef' t1 (\r1 -> r1 * rz3)
-  readSTRef t1 >>= \r1 ->
-    modifySTRef' y3 (\ry3 -> r1 + ry3)
-  readSTRef t3 >>= \r3 ->
-    modifySTRef' t0 (\r0 -> r0 * r3)
-  readSTRef t4 >>= \r4 ->
-    modifySTRef' z3 (\rz3 -> rz3 * r4) -- 32
-  readSTRef t0 >>= \r0 ->
-    modifySTRef' z3 (\rz3 -> rz3 + r0)
-  Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+add_proj (P ax ay az) (P bx by bz) =
+  let !(# x, y, z #) = add_proj# (# ax, ay, az #) (# bx, by, bz #)
+  in  P x y z
+{-# INLINABLE add_proj #-}
 
 -- algo 8, renes et al, 2015
 add_mixed :: Projective -> Projective -> Projective
-add_mixed (Projective x1 y1 z1) (Projective x2 y2 z2)
-  | z2 /= 1   = error "ppad-secp256k1 (add_mixed): internal error"
-  | otherwise = runST $ do
-      x3 <- newSTRef 0
-      y3 <- newSTRef 0
-      z3 <- newSTRef 0
-      t0 <- newSTRef (x1 * x2) -- 1
-      t1 <- newSTRef (y1 * y2)
-      t3 <- newSTRef (x2 + y2)
-      t4 <- newSTRef (x1 + y1) -- 4
-      readSTRef t4 >>= \r4 ->
-        modifySTRef' t3 (\r3 -> r3 * r4)
-      readSTRef t0 >>= \r0 ->
-        readSTRef t1 >>= \r1 ->
-        writeSTRef t4 (r0 + r1)
-      readSTRef t4 >>= \r4 ->
-        modifySTRef' t3 (\r3 -> r3 - r4) -- 7
-      writeSTRef t4 (y2 * z1)
-      modifySTRef' t4 (\r4 -> r4 + y1)
-      writeSTRef y3 (x2 * z1) -- 10
-      modifySTRef' y3 (\ry3 -> ry3 + x1)
-      readSTRef t0 >>= \r0 ->
-        writeSTRef x3 (r0 + r0)
-      readSTRef x3 >>= \rx3 ->
-        modifySTRef' t0 (\r0 -> rx3 + r0) -- 13
-      t2 <- newSTRef (_CURVE_Bm3 * z1)
-      readSTRef t1 >>= \r1 ->
-        readSTRef t2 >>= \r2 ->
-        writeSTRef z3 (r1 + r2)
-      readSTRef t2 >>= \r2 ->
-        modifySTRef' t1 (\r1 -> r1 - r2) -- 16
-      modifySTRef' y3 (\ry3 -> _CURVE_Bm3 * ry3)
-      readSTRef t4 >>= \r4 ->
-        readSTRef y3 >>= \ry3 ->
-        writeSTRef x3 (r4 * ry3)
-      readSTRef t3 >>= \r3 ->
-        readSTRef t1 >>= \r1 ->
-        writeSTRef t2 (r3 * r1) -- 19
-      readSTRef t2 >>= \r2 ->
-        modifySTRef' x3 (\rx3 -> r2 - rx3)
-      readSTRef t0 >>= \r0 ->
-        modifySTRef' y3 (\ry3 -> ry3 * r0)
-      readSTRef z3 >>= \rz3 ->
-        modifySTRef' t1 (\r1 -> r1 * rz3) -- 22
-      readSTRef t1 >>= \r1 ->
-        modifySTRef' y3 (\ry3 -> r1 + ry3)
-      readSTRef t3 >>= \r3 ->
-        modifySTRef' t0 (\r0 -> r0 * r3)
-      readSTRef t4 >>= \r4 ->
-        modifySTRef' z3 (\rz3 -> rz3 * r4) -- 25
-      readSTRef t0 >>= \r0 ->
-        modifySTRef' z3 (\rz3 -> rz3 + r0)
-      Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+add_mixed (P ax ay az) (P bx by bz) =
+  let !(# x, y, z #) = add_mixed# (# ax, ay, az #) (# bx, by, bz #)
+  in  P x y z
+{-# INLINABLE add_mixed #-}
 
 -- algo 9, renes et al, 2015
 double :: Projective -> Projective
-double (Projective x y z) = runST $ do
-  x3 <- newSTRef 0
-  y3 <- newSTRef 0
-  z3 <- newSTRef 0
-  t0 <- newSTRef (y * y) -- 1
-  readSTRef t0 >>= \r0 ->
-    writeSTRef z3 (r0 + r0)
-  modifySTRef' z3 (\rz3 -> rz3 + rz3)
-  modifySTRef' z3 (\rz3 -> rz3 + rz3) -- 4
-  t1 <- newSTRef (y * z)
-  t2 <- newSTRef (z * z)
-  modifySTRef t2 (\r2 -> _CURVE_Bm3 * r2) -- 7
-  readSTRef z3 >>= \rz3 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef x3 (r2 * rz3)
-  readSTRef t0 >>= \r0 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef y3 (r0 + r2)
-  readSTRef t1 >>= \r1 ->
-    modifySTRef' z3 (\rz3 -> r1 * rz3) -- 10
-  readSTRef t2 >>= \r2 ->
-    writeSTRef t1 (r2 + r2)
-  readSTRef t1 >>= \r1 ->
-    modifySTRef' t2 (\r2 -> r1 + r2)
-  readSTRef t2 >>= \r2 ->
-    modifySTRef' t0 (\r0 -> r0 - r2) -- 13
-  readSTRef t0 >>= \r0 ->
-    modifySTRef' y3 (\ry3 -> r0 * ry3)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' y3 (\ry3 -> rx3 + ry3)
-  writeSTRef t1 (x * y) -- 16
-  readSTRef t0 >>= \r0 ->
-    readSTRef t1 >>= \r1 ->
-    writeSTRef x3 (r0 * r1)
-  modifySTRef' x3 (\rx3 -> rx3 + rx3)
-  Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+double (Projective (C.Montgomery ax) (C.Montgomery ay) (C.Montgomery az)) =
+  let !(# x, y, z #) = double# (# ax, ay, az #)
+  in  P x y z
+{-# INLINABLE double #-}
 
 -- Timing-safe scalar multiplication of secp256k1 points.
 mul :: Projective -> Wider -> Maybe Projective
-mul p sec = do
-    guard (ge sec)
-    pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p sec
-  where
-    loop !j !acc !f !d !_SECRET
-      | j == _CURVE_Q_BITS = acc
-      | otherwise =
-          let !nd = double d
-              !(# nm, lsb_set #) = W.shr1_c _SECRET
-              !nacc = select_proj acc (add acc d) lsb_set
-              !nf   = select_proj (add f d) f lsb_set
-          in  loop (succ j) nacc nf nd nm
-{-# INLINE mul #-}
+mul (P x y z) (Wider s) = case mul# (# x, y, z #) s of
+  (# () | #)               -> Nothing
+  (# | (# px, py, pz #) #) -> Just $! P px py pz
+{-# INLINABLE mul #-}
 
 -- Timing-unsafe scalar multiplication of secp256k1 points.
 --
 -- Don't use this function if the scalar could potentially be a secret.
-mul_unsafe :: Projective -> Wider -> Maybe Projective
-mul_unsafe p = \case
+mul_vartime :: Projective -> Wider -> Maybe Projective
+mul_vartime p = \case
     Zero -> pure _CURVE_ZERO
     n | not (ge n) -> Nothing
       | otherwise  -> pure $! loop _CURVE_ZERO p n
@@ -641,14 +697,14 @@ mul_unsafe p = \case
       Zero -> r
       m ->
         let !nd = double d
-            !(# !nm, !lsb_set #) = W.shr1_c m
-            !nr = if CT.decide lsb_set then add r d else r -- XX
+            !(# nm, lsb_set #) = W.shr1_c m
+            !nr = if CT.decide lsb_set then add r d else r
         in  loop nr nd nm
 
 -- | Precomputed multiples of the secp256k1 base or generator point.
 data Context = Context {
     ctxW     :: {-# UNPACK #-} !Int
-  , ctxArray :: !(A.Array Projective)
+  , ctxArray :: {-# UNPACK #-} !ByteArray
   } deriving Generic
 
 instance Show Context where
@@ -666,66 +722,79 @@ instance Show Context where
 precompute :: Context
 precompute = _precompute 8
 
--- translation of noble-secp256k1's 'precompute'
+-- This is a highly-optimized version of a function originally
+-- translated from noble-secp256k1's "precompute". Points are stored in
+-- a ByteArray by arranging each limb into slices of 12 consecutive
+-- slots (each Projective point consists of three Montgomery values,
+-- each of which consists of four limbs, summing to twelve limbs in
+-- total).
+--
+-- Each point takes 96 bytes to store in this fashion, so the total size of
+-- the ByteArray is (size * 96) bytes.
 _precompute :: Int -> Context
 _precompute ctxW = Context {..} where
-  ctxArray = A.arrayFromListN size (loop_w mempty _CURVE_G 0)
   capJ = (2 :: Int) ^ (ctxW - 1)
   ws = 256 `quot` ctxW + 1
   size = ws * capJ
 
-  loop_w !acc !p !w
-    | w == ws = reverse acc
-    | otherwise =
-        let b = p
-            !(Pair nacc nb) = loop_j p (b : acc) b 1
-            np = double nb
-        in  loop_w nacc np (succ w)
+  -- construct the context array
+  ctxArray = runST $ do
+    marr <- BA.newByteArray (size * 96)
+    loop_w marr _CURVE_G 0
+    BA.unsafeFreezeByteArray marr
 
-  loop_j !p !acc !b !j
-    | j == capJ = Pair acc b
-    | otherwise =
-        let nb = add b p
-        in  loop_j p (nb : acc) nb (succ j)
+  -- write a point into the i^th 12-slot slice in the array
+  write :: MutableByteArray s -> Int -> Projective -> ST s ()
+  write marr i
+      (P (# Limb x0, Limb x1, Limb x2, Limb x3 #)
+         (# Limb y0, Limb y1, Limb y2, Limb y3 #)
+         (# Limb z0, Limb z1, Limb z2, Limb z3 #)) = do
+    let !base = i * 12
+    BA.writeByteArray marr (base + 00) (GHC.Word.W# x0)
+    BA.writeByteArray marr (base + 01) (GHC.Word.W# x1)
+    BA.writeByteArray marr (base + 02) (GHC.Word.W# x2)
+    BA.writeByteArray marr (base + 03) (GHC.Word.W# x3)
+    BA.writeByteArray marr (base + 04) (GHC.Word.W# y0)
+    BA.writeByteArray marr (base + 05) (GHC.Word.W# y1)
+    BA.writeByteArray marr (base + 06) (GHC.Word.W# y2)
+    BA.writeByteArray marr (base + 07) (GHC.Word.W# y3)
+    BA.writeByteArray marr (base + 08) (GHC.Word.W# z0)
+    BA.writeByteArray marr (base + 09) (GHC.Word.W# z1)
+    BA.writeByteArray marr (base + 10) (GHC.Word.W# z2)
+    BA.writeByteArray marr (base + 11) (GHC.Word.W# z3)
+
+  -- loop over windows
+  loop_w :: MutableByteArray s -> Projective -> Int -> ST s ()
+  loop_w !marr !p !w
+    | w == ws = pure ()
+    | otherwise = do
+        nb <- loop_j marr p p (w * capJ) 0
+        let np = double nb
+        loop_w marr np (succ w)
+
+  -- loop within windows
+  loop_j
+    :: MutableByteArray s
+    -> Projective
+    -> Projective
+    -> Int
+    -> Int
+    -> ST s Projective
+  loop_j !marr !p !b !idx !j = do
+    write marr idx b
+    if   j == capJ - 1
+    then pure b
+    else do
+      let !nb = add b p
+      loop_j marr p nb (succ idx) (succ j)
 
 -- Timing-safe wNAF (w-ary non-adjacent form) scalar multiplication of
 -- secp256k1 points.
 mul_wnaf :: Context -> Wider -> Maybe Projective
-mul_wnaf Context {..} _SECRET = do
-    guard (ge _SECRET)
-    pure $! loop 0 _CURVE_ZERO _CURVE_G _SECRET
-  where
-    wins = 256 `quot` ctxW + 1
-    wsize = 2 ^ (ctxW - 1)
-    mask = 2 ^ ctxW - 1
-    mnum = 2 ^ ctxW
-
-    loop !w !acc !f !n
-      | w == wins = acc
-      | otherwise =
-          let !off0 = w * wsize
-
-              !b0 = wider_to_int n .&. mask
-              !n0 = n `W.shr_limb` ctxW
-
-              !(Pair b1 n1) | b0 > wsize = Pair (b0 - mnum) (n0 + 1)
-                            | otherwise  = Pair b0 n0
-
-              !c0 = B.testBit w 0
-              !c1 = b1 < 0
-
-              !off1 = off0 + fi (abs b1) - 1
-
-          in  if   b1 == 0
-              then let !pr = A.indexArray ctxArray off0
-                       !pt | c0 = neg pr
-                           | otherwise = pr
-                   in  loop (w + 1) acc (add f pt) n1
-              else let !pr = A.indexArray ctxArray off1
-                       !pt | c1 = neg pr
-                           | otherwise = pr
-                   in  loop (w + 1) (add acc pt) f n1
-{-# INLINE mul_wnaf #-}
+mul_wnaf Context {..} (Wider s) = case mul_wnaf# ctxArray ctxW s of
+  (# () | #)               -> Nothing
+  (# | (# px, py, pz #) #) -> Just $! P px py pz
+{-# INLINABLE mul_wnaf #-}
 
 -- | Derive a public key (i.e., a secp256k1 point) from the provided
 --   secret.
@@ -761,6 +830,7 @@ parse_int256 :: BS.ByteString -> Maybe Wider
 parse_int256 bs = do
   guard (BS.length bs == 32)
   pure $! unsafe_roll32 bs
+{-# INLINABLE parse_int256 #-}
 
 -- | Parse compressed secp256k1 point (33 bytes), uncompressed point (65
 --   bytes), or BIP0340-style point (32 bytes).
@@ -796,8 +866,7 @@ _parse_compressed h (unsafe_roll32 -> x)
   | otherwise = do
       let !mx = C.to x
       !my <- C.sqrt (weierstrass mx)
-      let !(W.Wider (# Limb w, _, _, _ #)) = C.retr my
-          !yodd = B.testBit (GHC.Word.W# w) 0
+      let !yodd = CT.decide (W.odd (C.retr my))
           !hodd = B.testBit h 0
       pure $!
         if   hodd /= yodd
@@ -919,9 +988,8 @@ _sign_schnorr
 _sign_schnorr _mul _SECRET m a = do
   p <- _mul _SECRET
   let Affine (C.retr -> x_p) (C.retr -> y_p) = affine p
-      s = S.to _SECRET
-      d | CT.decide (W.odd y_p) = negate s -- XX
-        | otherwise = s
+      s       = S.to _SECRET
+      d       = S.select s (negate s) (W.odd y_p)
       bytes_d = unroll32 (S.retr d)
       bytes_p = unroll32 x_p
       t       = xor bytes_d (hash_aux a)
@@ -930,8 +998,7 @@ _sign_schnorr _mul _SECRET m a = do
   guard (k' /= 0) -- negligible probability
   pt <- _mul (S.retr k')
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
-      k | CT.decide (W.odd y_r) = negate k' -- XX
-        | otherwise = k'
+      k         = S.select k' (negate k') (W.odd y_r)
       bytes_r   = unroll32 x_r
       rand'     = hash_challenge (bytes_r <> bytes_p <> m)
       e         = S.to (unsafe_roll32 rand')
@@ -956,7 +1023,7 @@ verify_schnorr
   -> Pub            -- ^ public key
   -> BS.ByteString  -- ^ 64-byte Schnorr signature
   -> Bool
-verify_schnorr = _verify_schnorr (mul_unsafe _CURVE_G)
+verify_schnorr = _verify_schnorr (mul_vartime _CURVE_G)
 
 -- | The same as 'verify_schnorr', except uses a 'Context' to optimise
 --   internal calculations.
@@ -993,7 +1060,7 @@ _verify_schnorr _mul m p sig
           e = modQ . unsafe_roll32 $
             hash_challenge (unroll32 r <> unroll32 x_P <> m)
       pt0 <- _mul s
-      pt1 <- mul_unsafe capP e
+      pt1 <- mul_vartime capP e
       let dif = add pt0 (neg pt1)
       guard (dif /= _CURVE_ZERO)
       let Affine (C.from -> x_R) (C.from -> y_R) = affine dif
@@ -1066,9 +1133,7 @@ data HashFlag =
 
 -- Convert an ECDSA signature to low-S form.
 low :: ECDSA -> ECDSA
-low (ECDSA r s) = ECDSA r ms where
-  ms | s > _CURVE_QH = _CURVE_Q - s
-     | otherwise = s
+low (ECDSA r s) = ECDSA r (W.select s (_CURVE_Q - s) (W.gt s _CURVE_QH))
 {-# INLINE low #-}
 
 -- | Produce an ECDSA signature for the provided message, using the
@@ -1256,7 +1321,7 @@ verify_ecdsa_unrestricted
   -> Pub           -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
-verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_unsafe _CURVE_G)
+verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_vartime _CURVE_G)
 
 -- | The same as 'verify_ecdsa_unrestricted', except uses a 'Context' to
 --   optimise internal calculations.
@@ -1294,7 +1359,7 @@ _verify_ecdsa_unrestricted _mul m p (ECDSA r0 s0) = M.isJust $ do
       u1 = S.retr (e * si)
       u2 = S.retr (r * si)
   pt0 <- _mul u1
-  pt1 <- mul_unsafe p u2
+  pt1 <- mul_vartime p u2
   let capR = add pt0 pt1
   guard (capR /= _CURVE_ZERO)
   let Affine (S.to . C.retr -> v) _ = affine capR
