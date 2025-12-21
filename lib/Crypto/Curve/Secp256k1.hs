@@ -134,19 +134,19 @@ fi = fromIntegral
 data Pair a b = Pair !a !b
 
 -- Unboxed Montgomery synonym.
-type Mont = (# Limb, Limb, Limb, Limb #)
+type Limb4 = (# Limb, Limb, Limb, Limb #)
 
 -- Unboxed Projective synonym.
-type Proj = (# Mont, Mont, Mont #)
+type Proj = (# Limb4, Limb4, Limb4 #)
 
 -- convenience patterns
 pattern Zero :: Wider
 pattern Zero = Wider Z
 
-pattern Z :: Mont
+pattern Z :: Limb4
 pattern Z = (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
 
-pattern P :: Mont -> Mont -> Mont -> Projective
+pattern P :: Limb4 -> Limb4 -> Limb4 -> Projective
 pattern P x y z =
   Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
 {-# COMPLETE P #-}
@@ -345,7 +345,7 @@ fe n = n > 0 && n < _CURVE_P
 
 -- Is group element?
 ge :: Wider -> Bool
-ge n = n > 0 && n < _CURVE_Q
+ge (Wider n) = CT.decide (ge# n)
 {-# INLINE ge #-}
 
 -- curve points ---------------------------------------------------------------
@@ -449,31 +449,6 @@ even_y_vartime p = case affine p of
 
 -- unboxed internals ----------------------------------------------------------
 
--- algo 9, renes et al, 2015
-double# :: Proj -> Proj
-double# (# x, y, z #) =
-  let !(C.Montgomery b3) = _CURVE_Bm3
-      !t0  = C.sqr# y
-      !z3a = C.add# t0 t0
-      !z3b = C.add# z3a z3a
-      !z3c = C.add# z3b z3b
-      !t1  = C.mul# y z
-      !t2a = C.sqr# z
-      !t2b = C.mul# b3 t2a
-      !x3a = C.mul# t2b z3c
-      !y3a = C.add# t0 t2b
-      !z3d = C.mul# t1 z3c
-      !t1b = C.add# t2b t2b
-      !t2c = C.add# t1b t2b
-      !t0b = C.sub# t0 t2c
-      !y3b = C.mul# t0b y3a
-      !y3c = C.add# x3a y3b
-      !t1c = C.mul# x y
-      !x3b = C.mul# t0b t1c
-      !x3c = C.add# x3b x3b
-  in  (# x3c, y3c, z3d #)
-{-# INLINE double# #-}
-
 -- algo 7, renes et al, 2015
 add_proj# :: Proj -> Proj -> Proj
 add_proj# (# x1, y1, z1 #) (# x2, y2, z2 #) =
@@ -547,10 +522,59 @@ add_mixed# (# x1, y1, z1 #) (# x2, y2, _z2 #) =
   in  (# x3c, y3e, z3c #)
 {-# INLINE add_mixed# #-}
 
+-- algo 9, renes et al, 2015
+double# :: Proj -> Proj
+double# (# x, y, z #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0  = C.sqr# y
+      !z3a = C.add# t0 t0
+      !z3b = C.add# z3a z3a
+      !z3c = C.add# z3b z3b
+      !t1  = C.mul# y z
+      !t2a = C.sqr# z
+      !t2b = C.mul# b3 t2a
+      !x3a = C.mul# t2b z3c
+      !y3a = C.add# t0 t2b
+      !z3d = C.mul# t1 z3c
+      !t1b = C.add# t2b t2b
+      !t2c = C.add# t1b t2b
+      !t0b = C.sub# t0 t2c
+      !y3b = C.mul# t0b y3a
+      !y3c = C.add# x3a y3b
+      !t1c = C.mul# x y
+      !x3b = C.mul# t0b t1c
+      !x3c = C.add# x3b x3b
+  in  (# x3c, y3c, z3d #)
+{-# INLINE double# #-}
+
 select_proj# :: Proj -> Proj -> CT.Choice -> Proj
 select_proj# (# ax, ay, az #) (# bx, by, bz #) c =
   (# W.select# ax bx c, W.select# ay by c, W.select# az bz c #)
 {-# INLINE select_proj# #-}
+
+mul# :: Proj -> Limb4 -> (# () | Proj #)
+mul# (# px, py, pz #) s
+    | CT.decide (CT.not# (ge# s)) = (# () | #)
+    | otherwise =
+        let !(P gx gy gz) = _CURVE_G
+            !(C.Montgomery o) = C.one
+        in  loop (0 :: Int) (# Z, o, Z #) (# gx, gy, gz #) (# px, py, pz #) s
+  where
+    loop !j !a !f !d !_SECRET
+      | j == _CURVE_Q_BITS = (# | a #)
+      | otherwise =
+          let !nd = double# d
+              !(# nm, lsb_set #) = W.shr1_c# _SECRET
+              !nacc = select_proj# a (add_proj# a d) lsb_set
+              !nf   = select_proj# (add_proj# f d) f lsb_set
+          in  loop (succ j) nacc nf nd nm
+{-# INLINE mul# #-}
+
+ge# :: Limb4 -> CT.Choice
+ge# n =
+  let !(Wider q) = _CURVE_Q
+  in  CT.and# (W.gt# n Z) (W.lt# n q)
+{-# INLINE ge# #-}
 
 -- ec arithmetic --------------------------------------------------------------
 
@@ -567,6 +591,7 @@ neg (Projective x y z) = Projective x (negate y) z
 -- Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
 add p q = add_proj p q
+{-# INLINABLE add #-}
 
 -- algo 7, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
@@ -576,37 +601,30 @@ add_proj :: Projective -> Projective -> Projective
 add_proj (P ax ay az) (P bx by bz) =
   let !(# x, y, z #) = add_proj# (# ax, ay, az #) (# bx, by, bz #)
   in  P x y z
+{-# INLINABLE add_proj #-}
 
 -- algo 8, renes et al, 2015
 add_mixed :: Projective -> Projective -> Projective
 add_mixed (P ax ay az) (P bx by bz) =
   let !(# x, y, z #) = add_mixed# (# ax, ay, az #) (# bx, by, bz #)
   in  P x y z
+{-# INLINABLE add_mixed #-}
 
 -- algo 9, renes et al, 2015
 double :: Projective -> Projective
 double (Projective (C.Montgomery ax) (C.Montgomery ay) (C.Montgomery az)) =
   let !(# x, y, z #) = double# (# ax, ay, az #)
-  in  Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
+  in  P x y z
+{-# INLINABLE double #-}
 
 -- Timing-safe scalar multiplication of secp256k1 points.
 mul :: Projective -> Wider -> Maybe Projective
-mul (P px py pz) sec@(Wider s) = do
-    guard (ge sec)
-    let !(P gx gy gz) = _CURVE_G
-        !o = (# Limb 0x1000003D1##, Limb 0##, Limb 0##, Limb 0## #)
-    pure $!
-      loop (0 :: Int) (# Z, o, Z #) (# gx, gy, gz #) (# px, py, pz #) s
-  where
-    loop !j !a@(# ax, ay, az #) !f !d !_SECRET
-      | j == _CURVE_Q_BITS = P ax ay az
-      | otherwise =
-          let !nd = double# d
-              !(# nm, lsb_set #) = W.shr1_c# _SECRET
-              !nacc = select_proj# a (add_proj# a d) lsb_set
-              !nf   = select_proj# (add_proj# f d) f lsb_set
-          in  loop (succ j) nacc nf nd nm
-{-# INLINE mul #-}
+mul (P x y z) (Wider s) = case mul# (# x, y, z #) s of
+  (# () | #)               -> Nothing
+  (# | (# px, py, pz #) #) -> Just $! P px py pz
+{-# INLINABLE mul #-}
+
+-- XX mul_vartime might be nicer
 
 -- Timing-unsafe scalar multiplication of secp256k1 points.
 --
