@@ -35,7 +35,6 @@ main = W.mainWith $ do
   add
   double
   mul
-  mul_unsafe
   mul_wnaf
   derive_pub
   schnorr
@@ -91,15 +90,6 @@ mul =
   in  W.wgroup "mul" $ do
         W.func' "2 G" (S.mul g) t
         W.func' "(2 ^ 255 - 19) G" (S.mul g) b
-
-mul_unsafe :: W.Weigh ()
-mul_unsafe =
-  let !g = S._CURVE_G
-      !t = 2
-      !b = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
-  in  W.wgroup "mul_unsafe" $ do
-        W.func' "2 G" (S.mul_unsafe g) t
-        W.func' "(2 ^ 255 - 19) G" (S.mul_unsafe g) b
 
 mul_wnaf :: W.Weigh ()
 mul_wnaf =

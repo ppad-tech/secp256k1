@@ -29,8 +29,9 @@ main = defaultMain [
   , add
   , double
   , mul
-  , precompute
+  , mul_vartime
   , mul_wnaf
+  , precompute
   , derive_pub
   , schnorr
   , ecdsa
@@ -91,6 +92,16 @@ mul = env setup $ \x ->
     bgroup "mul" [
       bench "2 G" $ nf (S.mul S._CURVE_G) 2
     , bench "(2 ^ 255 - 19) G" $ nf (S.mul S._CURVE_G) x
+    ]
+  where
+    setup = pure . parse_int256 $ decodeLenient
+      "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed"
+
+mul_vartime :: Benchmark
+mul_vartime = env setup $ \x ->
+    bgroup "mul_vartime" [
+      bench "2 G" $ nf (S.mul_vartime S._CURVE_G) 2
+    , bench "(2 ^ 255 - 19) G" $ nf (S.mul_vartime S._CURVE_G) x
     ]
   where
     setup = pure . parse_int256 $ decodeLenient
