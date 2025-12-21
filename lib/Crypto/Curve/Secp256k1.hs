@@ -930,10 +930,10 @@ ecdh
   -> Wider               -- ^ secret key
   -> Maybe BS.ByteString -- ^ shared secret
 ecdh pub _SECRET = do
-  pt <- mul pub _SECRET
-  guard (pt /= _CURVE_ZERO)
-  case affine pt of
-    Affine (C.retr -> x) _ -> pure $! SHA256.hash (unroll32 x)
+  pt@(P _ _ (C.Montgomery -> z)) <- mul pub _SECRET
+  let !(Affine (C.retr -> x) _) = affine pt
+      !result = SHA256.hash (unroll32 x)
+  if CT.decide (C.eq z 0) then Nothing else Just result
 
 -- schnorr --------------------------------------------------------------------
 -- see https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
