@@ -27,6 +27,7 @@ main :: IO ()
 main = defaultMain [
     parse_point
   , add
+  , double
   , mul
   , precompute
   , mul_wnaf
@@ -67,13 +68,23 @@ mul_fixed = bgroup "mul_fixed" [
   ]
 
 add :: Benchmark
-add = bgroup "add" [
-    bench "2 p (double, trivial projective point)" $ nf (S.add p) p
-  , bench "2 r (double, nontrivial projective point)" $ nf (S.add r) r
-  , bench "p + q (trivial projective points)" $ nf (S.add p) q
-  , bench "p + s (nontrivial mixed points)" $ nf (S.add p) s
-  , bench "s + r (nontrivial projective points)" $ nf (S.add s) r
-  ]
+add = env setup $ \ ~(!pl, !ql, !rl, !sl) ->
+    bgroup "add" [
+      bench "p + q (trivial projective points)" $ nf (S.add pl) ql
+    , bench "p + s (nontrivial mixed points)" $ nf (S.add pl) sl
+    , bench "s + r (nontrivial projective points)" $ nf (S.add sl) rl
+    ]
+  where
+    setup = pure (p, q, r, s)
+
+double :: Benchmark
+double = env setup $ \ ~(!pl, !rl) ->
+    bgroup "double" [
+      bench "2 p (double, trivial projective point)" $ nf (S.add pl) pl
+    , bench "2 r (double, nontrivial projective point)" $ nf (S.add rl) rl
+    ]
+  where
+    setup = pure (p, r)
 
 mul :: Benchmark
 mul = env setup $ \x ->

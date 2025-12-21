@@ -35,6 +35,8 @@ module Crypto.Curve.Secp256k1 (
   , derive_pub'
   , _CURVE_G
   , _CURVE_ZERO
+  , ge
+  , fe
 
   -- * Parsing
   , parse_int256
@@ -72,6 +74,8 @@ module Crypto.Curve.Secp256k1 (
   -- Elliptic curve group operations
   , neg
   , add
+  , add_mixed
+  , add_proj
   , double
   , mul
   , mul_unsafe
@@ -91,6 +95,7 @@ module Crypto.Curve.Secp256k1 (
   , roll32
   , unsafe_roll32
   , unroll32
+  , select_proj
   ) where
 
 import Control.Monad (guard)
@@ -128,9 +133,23 @@ fi = fromIntegral
 -- dumb strict pair
 data Pair a b = Pair !a !b
 
--- convenience pattern
+-- Unboxed Montgomery synonym.
+type Mont = (# Limb, Limb, Limb, Limb #)
+
+-- Unboxed Projective synonym.
+type Proj = (# Mont, Mont, Mont #)
+
+-- convenience patterns
 pattern Zero :: Wider
-pattern Zero = Wider (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
+pattern Zero = Wider Z
+
+pattern Z :: Mont
+pattern Z = (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
+
+pattern P :: Mont -> Mont -> Mont -> Projective
+pattern P x y z =
+  Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
+{-# COMPLETE P #-}
 
 -- convert a Word8 to a Limb
 limb :: Word8 -> Limb
@@ -372,13 +391,15 @@ projective = \case
 
 -- | secp256k1 generator point.
 _CURVE_G :: Projective
-_CURVE_G = Projective x y C.one where
+_CURVE_G = Projective x y z where
   !x = C.Montgomery
     (# Limb 15507633332195041431##, Limb  2530505477788034779##
     ,  Limb 10925531211367256732##, Limb 11061375339145502536## #)
   !y = C.Montgomery
     (# Limb 12780836216951778274##, Limb 10231155108014310989##
     ,  Limb 8121878653926228278##,  Limb 14933801261141951190## #)
+  !z = C.Montgomery
+    (# Limb 0x1000003D1##, Limb 0##, Limb 0##, Limb 0## #)
 
 -- | secp256k1 zero point, point at infinity, or monoidal identity.
 _CURVE_ZERO :: Projective
@@ -427,12 +448,6 @@ even_y_vartime p = case affine p of
     | otherwise -> p
 
 -- unboxed internals ----------------------------------------------------------
-
--- Unboxed Montgomery synonym.
-type Mont = (# Limb, Limb, Limb, Limb #)
-
--- Unboxed Projective synonym.
-type Proj = (# Mont, Mont, Mont #)
 
 -- algo 9, renes et al, 2015
 double# :: Proj -> Proj
@@ -532,33 +547,26 @@ add_mixed# (# x1, y1, z1 #) (# x2, y2, _z2 #) =
   in  (# x3c, y3e, z3c #)
 {-# INLINE add_mixed# #-}
 
--- Constant-time selection of Projective points.
 select_proj# :: Proj -> Proj -> CT.Choice -> Proj
 select_proj# (# ax, ay, az #) (# bx, by, bz #) c =
-  (# C.select# ax bx c, C.select# ay by c, C.select# az bz c #)
+  (# W.select# ax bx c, W.select# ay by c, W.select# az bz c #)
 {-# INLINE select_proj# #-}
 
 -- ec arithmetic --------------------------------------------------------------
+
+-- Constant-time selection of Projective points.
+select_proj :: Projective -> Projective -> CT.Choice -> Projective
+select_proj (P ax ay az) (P bx by bz) c =
+  P (W.select# ax bx c) (W.select# ay by c) (W.select# az bz c)
+{-# INLINE select_proj #-}
 
 -- Negate secp256k1 point.
 neg :: Projective -> Projective
 neg (Projective x y z) = Projective x (negate y) z
 
--- Constant-time selection of Projective points.
-select_proj :: Projective -> Projective -> CT.Choice -> Projective
-select_proj (Projective ax ay az) (Projective bx by bz) c =
-  Projective (C.select ax bx c) (C.select ay by c) (C.select az bz c)
-{-# INLINE select_proj #-}
-
 -- Elliptic curve addition on secp256k1.
 add :: Projective -> Projective -> Projective
-add p q@(Projective _ _ z)
-  | z == 1 = add_mixed p q   -- algo 8
-  | otherwise = add_proj p q -- algo 7
-
-pattern P :: Mont -> Mont -> Mont -> Projective
-pattern P x y z = Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
-{-# COMPLETE P #-}
+add p q = add_proj p q
 
 -- algo 7, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
@@ -583,17 +591,20 @@ double (Projective (C.Montgomery ax) (C.Montgomery ay) (C.Montgomery az)) =
 
 -- Timing-safe scalar multiplication of secp256k1 points.
 mul :: Projective -> Wider -> Maybe Projective
-mul p sec@(Wider s) = do
+mul (P px py pz) sec@(Wider s) = do
     guard (ge sec)
-    pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p s
+    let !(P gx gy gz) = _CURVE_G
+        !o = (# Limb 0x1000003D1##, Limb 0##, Limb 0##, Limb 0## #)
+    pure $!
+      loop (0 :: Int) (# Z, o, Z #) (# gx, gy, gz #) (# px, py, pz #) s
   where
-    loop !j !acc !f !d !_SECRET
-      | j == _CURVE_Q_BITS = acc
+    loop !j !a@(# ax, ay, az #) !f !d !_SECRET
+      | j == _CURVE_Q_BITS = P ax ay az
       | otherwise =
-          let !nd = double d
+          let !nd = double# d
               !(# nm, lsb_set #) = W.shr1_c# _SECRET
-              !nacc = select_proj acc (add acc d) lsb_set -- XX
-              !nf   = select_proj (add f d) f lsb_set     -- XX
+              !nacc = select_proj# a (add_proj# a d) lsb_set
+              !nf   = select_proj# (add_proj# f d) f lsb_set
           in  loop (succ j) nacc nf nd nm
 {-# INLINE mul #-}
 
