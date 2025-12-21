@@ -105,7 +105,6 @@ import qualified Data.ByteString.Unsafe as BU
 import qualified Data.Choice as CT
 import qualified Data.Maybe as M
 import qualified Data.Primitive.Array as A
-import Data.STRef
 import Data.Word (Word8)
 import Data.Word.Limb (Limb(..))
 import qualified Data.Word.Limb as L
@@ -427,6 +426,118 @@ even_y_vartime p = case affine p of
     | CT.decide (W.odd y)  -> neg p -- XX
     | otherwise -> p
 
+-- unboxed internals ----------------------------------------------------------
+
+-- Unboxed Montgomery synonym.
+type Mont = (# Limb, Limb, Limb, Limb #)
+
+-- Unboxed Projective synonym.
+type Proj = (# Mont, Mont, Mont #)
+
+-- algo 9, renes et al, 2015
+double# :: Proj -> Proj
+double# (# x, y, z #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0  = C.sqr# y
+      !z3a = C.add# t0 t0
+      !z3b = C.add# z3a z3a
+      !z3c = C.add# z3b z3b
+      !t1  = C.mul# y z
+      !t2a = C.sqr# z
+      !t2b = C.mul# b3 t2a
+      !x3a = C.mul# t2b z3c
+      !y3a = C.add# t0 t2b
+      !z3d = C.mul# t1 z3c
+      !t1b = C.add# t2b t2b
+      !t2c = C.add# t1b t2b
+      !t0b = C.sub# t0 t2c
+      !y3b = C.mul# t0b y3a
+      !y3c = C.add# x3a y3b
+      !t1c = C.mul# x y
+      !x3b = C.mul# t0b t1c
+      !x3c = C.add# x3b x3b
+  in  (# x3c, y3c, z3d #)
+{-# INLINE double# #-}
+
+-- algo 7, renes et al, 2015
+add_proj# :: Proj -> Proj -> Proj
+add_proj# (# x1, y1, z1 #) (# x2, y2, z2 #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0a  = C.mul# x1 x2
+      !t1a  = C.mul# y1 y2
+      !t2a  = C.mul# z1 z2
+      !t3a  = C.add# x1 y1
+      !t4a  = C.add# x2 y2
+      !t3b  = C.mul# t3a t4a
+      !t4b  = C.add# t0a t1a
+      !t3c  = C.sub# t3b t4b
+      !t4c  = C.add# y1 z1
+      !x3a  = C.add# y2 z2
+      !t4d  = C.mul# t4c x3a
+      !x3b  = C.add# t1a t2a
+      !t4e  = C.sub# t4d x3b
+      !x3c  = C.add# x1 z1
+      !y3a  = C.add# x2 z2
+      !x3d  = C.mul# x3c y3a
+      !y3b  = C.add# t0a t2a
+      !y3c  = C.sub# x3d y3b
+      !x3e  = C.add# t0a t0a
+      !t0b  = C.add# x3e t0a
+      !t2b  = C.mul# b3 t2a
+      !z3a  = C.add# t1a t2b
+      !t1b  = C.sub# t1a t2b
+      !y3d  = C.mul# b3 y3c
+      !x3f  = C.mul# t4e y3d
+      !t2c  = C.mul# t3c t1b
+      !x3g  = C.sub# t2c x3f
+      !y3e  = C.mul# y3d t0b
+      !t1c  = C.mul# t1b z3a
+      !y3f  = C.add# t1c y3e
+      !t0c  = C.mul# t0b t3c
+      !z3b  = C.mul# z3a t4e
+      !z3c  = C.add# z3b t0c
+  in  (# x3g, y3f, z3c #)
+{-# INLINE add_proj# #-}
+
+-- algo 8, renes et al, 2015
+add_mixed# :: Proj -> Proj -> Proj
+add_mixed# (# x1, y1, z1 #) (# x2, y2, _z2 #) =
+  let !(C.Montgomery b3) = _CURVE_Bm3
+      !t0a  = C.mul# x1 x2
+      !t1a  = C.mul# y1 y2
+      !t3a  = C.add# x2 y2
+      !t4a  = C.add# x1 y1
+      !t3b  = C.mul# t3a t4a
+      !t4b  = C.add# t0a t1a
+      !t3c  = C.sub# t3b t4b
+      !t4c  = C.mul# y2 z1
+      !t4d  = C.add# t4c y1
+      !y3a  = C.mul# x2 z1
+      !y3b  = C.add# y3a x1
+      !x3a  = C.add# t0a t0a
+      !t0b  = C.add# x3a t0a
+      !t2a  = C.mul# b3 z1
+      !z3a  = C.add# t1a t2a
+      !t1b  = C.sub# t1a t2a
+      !y3c  = C.mul# b3 y3b
+      !x3b  = C.mul# t4d y3c
+      !t2b  = C.mul# t3c t1b
+      !x3c  = C.sub# t2b x3b
+      !y3d  = C.mul# y3c t0b
+      !t1c  = C.mul# t1b z3a
+      !y3e  = C.add# t1c y3d
+      !t0c  = C.mul# t0b t3c
+      !z3b  = C.mul# z3a t4d
+      !z3c  = C.add# z3b t0c
+  in  (# x3c, y3e, z3c #)
+{-# INLINE add_mixed# #-}
+
+-- Constant-time selection of Projective points.
+select_proj# :: Proj -> Proj -> CT.Choice -> Proj
+select_proj# (# ax, ay, az #) (# bx, by, bz #) c =
+  (# C.select# ax bx c, C.select# ay by c, C.select# az bz c #)
+{-# INLINE select_proj# #-}
+
 -- ec arithmetic --------------------------------------------------------------
 
 -- Negate secp256k1 point.
@@ -445,186 +556,44 @@ add p q@(Projective _ _ z)
   | z == 1 = add_mixed p q   -- algo 8
   | otherwise = add_proj p q -- algo 7
 
+pattern P :: Mont -> Mont -> Mont -> Projective
+pattern P x y z = Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
+{-# COMPLETE P #-}
+
 -- algo 7, "complete addition formulas for prime order elliptic curves,"
 -- renes et al, 2015
 --
 -- https://eprint.iacr.org/2015/1060.pdf
 add_proj :: Projective -> Projective -> Projective
-add_proj (Projective x1 y1 z1) (Projective x2 y2 z2) = runST $ do
-  x3 <- newSTRef 0
-  y3 <- newSTRef 0
-  z3 <- newSTRef 0
-  t0 <- newSTRef (x1 * x2) -- 1
-  t1 <- newSTRef (y1 * y2)
-  t2 <- newSTRef (z1 * z2)
-  t3 <- newSTRef (x1 + y1) -- 4
-  t4 <- newSTRef (x2 + y2)
-  readSTRef t4 >>= \r4 ->
-    modifySTRef' t3 (\r3 -> r3 * r4)
-  readSTRef t0 >>= \r0 ->
-    readSTRef t1 >>= \r1 ->
-    writeSTRef t4 (r0 + r1)
-  readSTRef t4 >>= \r4 ->
-    modifySTRef' t3 (\r3 -> r3 - r4) -- 8
-  writeSTRef t4 (y1 + z1)
-  writeSTRef x3 (y2 + z2)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' t4 (\r4 -> r4 * rx3)
-  readSTRef t1 >>= \r1 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef x3 (r1 + r2) -- 12
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' t4 (\r4 -> r4 - rx3)
-  writeSTRef x3 (x1 + z1)
-  writeSTRef y3 (x2 + z2)
-  readSTRef y3 >>= \ry3 ->
-    modifySTRef' x3 (\rx3 -> rx3 * ry3) -- 16
-  readSTRef t0 >>= \r0 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef y3 (r0 + r2)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' y3 (\ry3 -> rx3 - ry3)
-  readSTRef t0 >>= \r0 ->
-    writeSTRef x3 (r0 + r0)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef t0 (\r0 -> rx3 + r0) -- 20
-  modifySTRef' t2 (\r2 -> _CURVE_Bm3 * r2)
-  readSTRef t1 >>= \r1 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef z3 (r1 + r2)
-  readSTRef t2 >>= \r2 ->
-    modifySTRef' t1 (\r1 -> r1 - r2)
-  modifySTRef' y3 (\ry3 -> _CURVE_Bm3 * ry3) -- 24
-  readSTRef t4 >>= \r4 ->
-    readSTRef y3 >>= \ry3 ->
-    writeSTRef x3 (r4 * ry3)
-  readSTRef t3 >>= \r3 ->
-    readSTRef t1 >>= \r1 ->
-    writeSTRef t2 (r3 * r1)
-  readSTRef t2 >>= \r2 ->
-    modifySTRef' x3 (\rx3 -> r2 - rx3)
-  readSTRef t0 >>= \r0 ->
-    modifySTRef' y3 (\ry3 -> ry3 * r0) -- 28
-  readSTRef z3 >>= \rz3 ->
-    modifySTRef' t1 (\r1 -> r1 * rz3)
-  readSTRef t1 >>= \r1 ->
-    modifySTRef' y3 (\ry3 -> r1 + ry3)
-  readSTRef t3 >>= \r3 ->
-    modifySTRef' t0 (\r0 -> r0 * r3)
-  readSTRef t4 >>= \r4 ->
-    modifySTRef' z3 (\rz3 -> rz3 * r4) -- 32
-  readSTRef t0 >>= \r0 ->
-    modifySTRef' z3 (\rz3 -> rz3 + r0)
-  Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+add_proj (P ax ay az) (P bx by bz) =
+  let !(# x, y, z #) = add_proj# (# ax, ay, az #) (# bx, by, bz #)
+  in  P x y z
 
 -- algo 8, renes et al, 2015
 add_mixed :: Projective -> Projective -> Projective
-add_mixed (Projective x1 y1 z1) (Projective x2 y2 z2)
-  | z2 /= 1   = error "ppad-secp256k1 (add_mixed): internal error"
-  | otherwise = runST $ do
-      x3 <- newSTRef 0
-      y3 <- newSTRef 0
-      z3 <- newSTRef 0
-      t0 <- newSTRef (x1 * x2) -- 1
-      t1 <- newSTRef (y1 * y2)
-      t3 <- newSTRef (x2 + y2)
-      t4 <- newSTRef (x1 + y1) -- 4
-      readSTRef t4 >>= \r4 ->
-        modifySTRef' t3 (\r3 -> r3 * r4)
-      readSTRef t0 >>= \r0 ->
-        readSTRef t1 >>= \r1 ->
-        writeSTRef t4 (r0 + r1)
-      readSTRef t4 >>= \r4 ->
-        modifySTRef' t3 (\r3 -> r3 - r4) -- 7
-      writeSTRef t4 (y2 * z1)
-      modifySTRef' t4 (\r4 -> r4 + y1)
-      writeSTRef y3 (x2 * z1) -- 10
-      modifySTRef' y3 (\ry3 -> ry3 + x1)
-      readSTRef t0 >>= \r0 ->
-        writeSTRef x3 (r0 + r0)
-      readSTRef x3 >>= \rx3 ->
-        modifySTRef' t0 (\r0 -> rx3 + r0) -- 13
-      t2 <- newSTRef (_CURVE_Bm3 * z1)
-      readSTRef t1 >>= \r1 ->
-        readSTRef t2 >>= \r2 ->
-        writeSTRef z3 (r1 + r2)
-      readSTRef t2 >>= \r2 ->
-        modifySTRef' t1 (\r1 -> r1 - r2) -- 16
-      modifySTRef' y3 (\ry3 -> _CURVE_Bm3 * ry3)
-      readSTRef t4 >>= \r4 ->
-        readSTRef y3 >>= \ry3 ->
-        writeSTRef x3 (r4 * ry3)
-      readSTRef t3 >>= \r3 ->
-        readSTRef t1 >>= \r1 ->
-        writeSTRef t2 (r3 * r1) -- 19
-      readSTRef t2 >>= \r2 ->
-        modifySTRef' x3 (\rx3 -> r2 - rx3)
-      readSTRef t0 >>= \r0 ->
-        modifySTRef' y3 (\ry3 -> ry3 * r0)
-      readSTRef z3 >>= \rz3 ->
-        modifySTRef' t1 (\r1 -> r1 * rz3) -- 22
-      readSTRef t1 >>= \r1 ->
-        modifySTRef' y3 (\ry3 -> r1 + ry3)
-      readSTRef t3 >>= \r3 ->
-        modifySTRef' t0 (\r0 -> r0 * r3)
-      readSTRef t4 >>= \r4 ->
-        modifySTRef' z3 (\rz3 -> rz3 * r4) -- 25
-      readSTRef t0 >>= \r0 ->
-        modifySTRef' z3 (\rz3 -> rz3 + r0)
-      Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+add_mixed (P ax ay az) (P bx by bz) =
+  let !(# x, y, z #) = add_mixed# (# ax, ay, az #) (# bx, by, bz #)
+  in  P x y z
 
 -- algo 9, renes et al, 2015
 double :: Projective -> Projective
-double (Projective x y z) = runST $ do
-  x3 <- newSTRef 0
-  y3 <- newSTRef 0
-  z3 <- newSTRef 0
-  t0 <- newSTRef (y * y) -- 1
-  readSTRef t0 >>= \r0 ->
-    writeSTRef z3 (r0 + r0)
-  modifySTRef' z3 (\rz3 -> rz3 + rz3)
-  modifySTRef' z3 (\rz3 -> rz3 + rz3) -- 4
-  t1 <- newSTRef (y * z)
-  t2 <- newSTRef (z * z)
-  modifySTRef t2 (\r2 -> _CURVE_Bm3 * r2) -- 7
-  readSTRef z3 >>= \rz3 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef x3 (r2 * rz3)
-  readSTRef t0 >>= \r0 ->
-    readSTRef t2 >>= \r2 ->
-    writeSTRef y3 (r0 + r2)
-  readSTRef t1 >>= \r1 ->
-    modifySTRef' z3 (\rz3 -> r1 * rz3) -- 10
-  readSTRef t2 >>= \r2 ->
-    writeSTRef t1 (r2 + r2)
-  readSTRef t1 >>= \r1 ->
-    modifySTRef' t2 (\r2 -> r1 + r2)
-  readSTRef t2 >>= \r2 ->
-    modifySTRef' t0 (\r0 -> r0 - r2) -- 13
-  readSTRef t0 >>= \r0 ->
-    modifySTRef' y3 (\ry3 -> r0 * ry3)
-  readSTRef x3 >>= \rx3 ->
-    modifySTRef' y3 (\ry3 -> rx3 + ry3)
-  writeSTRef t1 (x * y) -- 16
-  readSTRef t0 >>= \r0 ->
-    readSTRef t1 >>= \r1 ->
-    writeSTRef x3 (r0 * r1)
-  modifySTRef' x3 (\rx3 -> rx3 + rx3)
-  Projective <$> readSTRef x3 <*> readSTRef y3 <*> readSTRef z3
+double (Projective (C.Montgomery ax) (C.Montgomery ay) (C.Montgomery az)) =
+  let !(# x, y, z #) = double# (# ax, ay, az #)
+  in  Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
 
 -- Timing-safe scalar multiplication of secp256k1 points.
 mul :: Projective -> Wider -> Maybe Projective
-mul p sec = do
+mul p sec@(Wider s) = do
     guard (ge sec)
-    pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p sec
+    pure $! loop (0 :: Int) _CURVE_ZERO _CURVE_G p s
   where
     loop !j !acc !f !d !_SECRET
       | j == _CURVE_Q_BITS = acc
       | otherwise =
           let !nd = double d
-              !(# nm, lsb_set #) = W.shr1_c _SECRET
-              !nacc = select_proj acc (add acc d) lsb_set
-              !nf   = select_proj (add f d) f lsb_set
+              !(# nm, lsb_set #) = W.shr1_c# _SECRET
+              !nacc = select_proj acc (add acc d) lsb_set -- XX
+              !nf   = select_proj (add f d) f lsb_set     -- XX
           in  loop (succ j) nacc nf nd nm
 {-# INLINE mul #-}
 
