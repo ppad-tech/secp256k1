@@ -114,52 +114,52 @@ differing inputs is attributable to noise:
 
 ```
   benchmarking derive_pub/wnaf, sk = 2
-  time                 27.08 μs   (27.07 μs .. 27.10 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 27.10 μs   (27.09 μs .. 27.12 μs)
-  std dev              60.01 ns   (41.51 ns .. 98.05 ns)
+  time                 14.18 μs   (13.76 μs .. 14.81 μs)
+                       0.995 R²   (0.990 R² .. 1.000 R²)
+  mean                 13.72 μs   (13.62 μs .. 13.99 μs)
+  std dev              518.8 ns   (188.9 ns .. 947.5 ns)
 
   benchmarking derive_pub/wnaf, sk = 2 ^ 255 - 19
-  time                 27.09 μs   (27.07 μs .. 27.11 μs)
+  time                 13.67 μs   (13.64 μs .. 13.70 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 27.09 μs   (27.08 μs .. 27.12 μs)
-  std dev              61.41 ns   (34.20 ns .. 116.9 ns)
+  mean                 13.70 μs   (13.68 μs .. 13.72 μs)
+  std dev              64.27 ns   (53.05 ns .. 78.25 ns)
 
   benchmarking schnorr/sign_schnorr' (small)
-  time                 77.40 μs   (77.11 μs .. 77.87 μs)
+  time                 49.22 μs   (49.07 μs .. 49.32 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 77.32 μs   (77.25 μs .. 77.53 μs)
-  std dev              366.0 ns   (197.5 ns .. 704.2 ns)
+  mean                 49.18 μs   (49.08 μs .. 49.29 μs)
+  std dev              368.4 ns   (296.2 ns .. 528.5 ns)
 
   benchmarking schnorr/sign_schnorr' (large)
-  time                 77.39 μs   (77.33 μs .. 77.45 μs)
+  time                 49.14 μs   (49.05 μs .. 49.22 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 77.36 μs   (77.31 μs .. 77.42 μs)
-  std dev              178.8 ns   (147.8 ns .. 222.9 ns)
+  mean                 49.04 μs   (48.99 μs .. 49.13 μs)
+  std dev              228.1 ns   (161.6 ns .. 392.6 ns)
 
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 72.32 μs   (72.24 μs .. 72.42 μs)
+  time                 58.01 μs   (57.87 μs .. 58.30 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 72.42 μs   (72.38 μs .. 72.50 μs)
-  std dev              199.4 ns   (151.0 ns .. 298.5 ns)
+  mean                 57.88 μs   (57.76 μs .. 58.14 μs)
+  std dev              577.1 ns   (269.5 ns .. 1.102 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 72.42 μs   (72.31 μs .. 72.56 μs)
+  time                 57.90 μs   (57.86 μs .. 57.94 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 72.41 μs   (72.37 μs .. 72.49 μs)
-  std dev              199.9 ns   (141.9 ns .. 344.1 ns)
+  mean                 57.94 μs   (57.90 μs .. 57.98 μs)
+  std dev              136.5 ns   (108.2 ns .. 180.4 ns)
 
   benchmarking ecdh/ecdh (small)
-  time                 257.2 μs   (256.9 μs .. 257.5 μs)
+  time                 143.6 μs   (143.4 μs .. 143.7 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 257.0 μs   (256.8 μs .. 257.2 μs)
-  std dev              667.5 ns   (480.7 ns .. 973.1 ns)
+  mean                 143.7 μs   (143.3 μs .. 144.6 μs)
+  std dev              2.022 μs   (846.9 ns .. 3.402 μs)
 
   benchmarking ecdh/ecdh (large)
-  time                 256.9 μs   (256.7 μs .. 257.0 μs)
+  time                 143.8 μs   (143.7 μs .. 143.9 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 256.9 μs   (256.7 μs .. 257.0 μs)
-  std dev              369.9 ns   (278.8 ns .. 570.4 ns)
+  mean                 143.8 μs   (143.7 μs .. 143.9 μs)
+  std dev              385.2 ns   (265.9 ns .. 544.5 ns)
 ```
 
 Note also that care has been taken to ensure that allocation is held
@@ -180,9 +180,9 @@ constant across input sizes for all sensitive operations:
 
   ecdsa
 
-    Case                 Allocated  GCs
-    sign_ecdsa' (small)     61,624    0
-    sign_ecdsa' (large)     61,624    0
+    Case                   Allocated  GCs
+    sign_ecdsa' (small)     61,592    0
+    sign_ecdsa' (large)     61,592    0
 
   ecdh
 
