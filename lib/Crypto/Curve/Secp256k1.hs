@@ -988,8 +988,8 @@ _sign_schnorr
 _sign_schnorr _mul _SECRET m a = do
   p <- _mul _SECRET
   let Affine (C.retr -> x_p) (C.retr -> y_p) = affine p
-      s = S.to _SECRET
-      d = S.select s (negate s) (W.odd y_p)
+      s       = S.to _SECRET
+      d       = S.select s (negate s) (W.odd y_p)
       bytes_d = unroll32 (S.retr d)
       bytes_p = unroll32 x_p
       t       = xor bytes_d (hash_aux a)
@@ -998,7 +998,7 @@ _sign_schnorr _mul _SECRET m a = do
   guard (k' /= 0) -- negligible probability
   pt <- _mul (S.retr k')
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
-      k = S.select k' (negate k') (W.odd y_r)
+      k         = S.select k' (negate k') (W.odd y_r)
       bytes_r   = unroll32 x_r
       rand'     = hash_challenge (bytes_r <> bytes_p <> m)
       e         = S.to (unsafe_roll32 rand')
@@ -1133,9 +1133,7 @@ data HashFlag =
 
 -- Convert an ECDSA signature to low-S form.
 low :: ECDSA -> ECDSA
-low (ECDSA r s) = ECDSA r ms where
-  ms | s > _CURVE_QH = _CURVE_Q - s
-     | otherwise = s
+low (ECDSA r s) = ECDSA r (W.select s (_CURVE_Q - s) (W.gt s _CURVE_QH))
 {-# INLINE low #-}
 
 -- | Produce an ECDSA signature for the provided message, using the
