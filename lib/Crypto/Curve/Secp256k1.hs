@@ -700,8 +700,8 @@ mul_vartime p = \case
       Zero -> r
       m ->
         let !nd = double d
-            !(# !nm, !lsb_set #) = W.shr1_c m
-            !nr = if CT.decide lsb_set then add r d else r -- XX
+            !(# nm, lsb_set #) = W.shr1_c m
+            !nr = if CT.decide lsb_set then add r d else r
         in  loop nr nd nm
 
 -- | Precomputed multiples of the secp256k1 base or generator point.
