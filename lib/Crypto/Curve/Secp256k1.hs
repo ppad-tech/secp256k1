@@ -368,12 +368,9 @@ type Pub = Projective
 
 -- Convert to affine coordinates.
 affine :: Projective -> Affine
-affine = \case
-  Projective 0 1 0 -> Affine 0 0
-  Projective x y 1 -> Affine x y
-  Projective x y z ->
-    let !iz = C.inv z
-    in  Affine (x * iz) (y * iz)
+affine (Projective x y z) =
+  let !iz = C.inv z
+  in  Affine (x * iz) (y * iz)
 {-# INLINABLE affine #-}
 
 -- Convert to projective coordinates.
@@ -992,8 +989,7 @@ _sign_schnorr _mul _SECRET m a = do
   p <- _mul _SECRET
   let Affine (C.retr -> x_p) (C.retr -> y_p) = affine p
       s = S.to _SECRET
-      d | CT.decide (W.odd y_p) = negate s -- XX
-        | otherwise = s
+      d = S.select s (negate s) (W.odd y_p)
       bytes_d = unroll32 (S.retr d)
       bytes_p = unroll32 x_p
       t       = xor bytes_d (hash_aux a)
@@ -1002,8 +998,7 @@ _sign_schnorr _mul _SECRET m a = do
   guard (k' /= 0) -- negligible probability
   pt <- _mul (S.retr k')
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
-      k | CT.decide (W.odd y_r) = negate k' -- XX
-        | otherwise = k'
+      k = S.select k' (negate k') (W.odd y_r)
       bytes_r   = unroll32 x_r
       rand'     = hash_challenge (bytes_r <> bytes_p <> m)
       e         = S.to (unsafe_roll32 rand')
