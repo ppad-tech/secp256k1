@@ -64,29 +64,38 @@ bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr' (large)
-  time                 77.54 μs   (77.14 μs .. 78.16 μs)
+  time                 48.80 μs   (48.36 μs .. 49.33 μs)
                        1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 77.27 μs   (77.11 μs .. 77.63 μs)
-  std dev              802.7 ns   (166.4 ns .. 1.331 μs)
+  mean                 48.45 μs   (48.35 μs .. 48.70 μs)
+  std dev              493.2 ns   (237.4 ns .. 904.2 ns)
 
   benchmarking schnorr/verify_schnorr'
-  time                 161.1 μs   (160.9 μs .. 161.3 μs)
+  time                 99.57 μs   (99.22 μs .. 99.93 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 160.9 μs   (160.6 μs .. 161.0 μs)
-  std dev              618.3 ns   (374.1 ns .. 1.070 μs)
+  mean                 99.58 μs   (99.36 μs .. 99.82 μs)
+  std dev              774.1 ns   (684.9 ns .. 882.0 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 72.37 μs   (72.32 μs .. 72.43 μs)
+  time                 57.96 μs   (57.69 μs .. 58.26 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 72.50 μs   (72.43 μs .. 72.60 μs)
-  std dev              268.5 ns   (167.6 ns .. 413.0 ns)
+  mean                 57.72 μs   (57.59 μs .. 57.87 μs)
+  std dev              485.2 ns   (401.6 ns .. 609.9 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 151.8 μs   (151.6 μs .. 152.0 μs)
+  time                 89.84 μs   (89.56 μs .. 90.12 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 152.0 μs   (151.8 μs .. 152.3 μs)
-  std dev              781.7 ns   (421.4 ns .. 1.175 μs)
+  mean                 89.74 μs   (89.53 μs .. 89.95 μs)
+  std dev              690.5 ns   (578.1 ns .. 873.0 ns)
+
+  benchmarking ecdh/ecdh (large)
+  time                 140.4 μs   (140.0 μs .. 140.8 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 139.9 μs   (139.5 μs .. 140.3 μs)
+  std dev              1.147 μs   (916.7 ns .. 1.483 μs)
 ```
+
+Ensure you compile with the 'llvm' flag (and that [ppad-fixed][fixed]
+has been compiled with the 'llvm' flag) for maximum performance.
 
 ## Security
 
