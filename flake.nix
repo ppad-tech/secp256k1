@@ -17,6 +17,7 @@
       type = "git";
       url  = "git://git.ppad.tech/sha256.git";
       ref  = "master";
+      inputs.ppad-base16.follows = "ppad-base16";
       inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
     # transitive dependency via ppad-hmac-drbg
@@ -24,12 +25,14 @@
       type = "git";
       url  = "git://git.ppad.tech/sha512.git";
       ref  = "master";
+      inputs.ppad-base16.follows = "ppad-base16";
       inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
     ppad-hmac-drbg = {
       type = "git";
       url  = "git://git.ppad.tech/hmac-drbg.git";
       ref  = "master";
+      inputs.ppad-base16.follows = "ppad-base16";
       inputs.ppad-sha256.follows = "ppad-sha256";
       inputs.ppad-sha512.follows = "ppad-sha512";
       inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
