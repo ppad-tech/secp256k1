@@ -62,7 +62,6 @@
         llvm  = pkgs.llvmPackages_15.llvm;
 
         base16 = ppad-base16.packages.${system}.default;
-        hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
 
         fixed = ppad-fixed.packages.${system}.default;
         fixed-llvm =
@@ -76,10 +75,16 @@
             (hlib.enableCabalFlag sha256 "llvm")
             [ llvm ];
 
+        hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
+        hmac-drbg-llvm =
+          hlib.addBuildTools
+            (hlib.enableCabalFlag hmac-drbg "llvm")
+            [ llvm ];
+
         hpkgs = pkgs.haskell.packages.ghc981.extend (new: old: {
           ppad-base16 = base16;
           ppad-sha256 = sha256-llvm;
-          ppad-hmac-drbg = hmac-drbg;
+          ppad-hmac-drbg = hmac-drbg-llvm;
           ppad-fixed = fixed-llvm;
           ${lib} = new.callCabal2nix lib ./. {
             ppad-base16 = new.ppad-base16;

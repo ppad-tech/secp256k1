@@ -122,11 +122,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1750582815,
-        "narHash": "sha256-m9Ynf6rCAGrGU8bPil2apUC5nwPNfJSkak4GOVPj9ok=",
+        "lastModified": 1766436802,
+        "narHash": "sha256-cZBaR5zBpguiusf3/BzjwrMY63FoXDVGuas+e8QyjTc=",
         "ref": "master",
-        "rev": "d49f5c7c03c82d4d8321f2932b19160822715ebc",
-        "revCount": 52,
+        "rev": "c23408f69f64d41c3d5478801bb16c0603b4e43b",
+        "revCount": 53,
         "type": "git",
         "url": "git://git.ppad.tech/hmac-drbg.git"
       },
