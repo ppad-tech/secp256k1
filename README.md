@@ -64,28 +64,28 @@ bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr' (large)
-  time                 48.80 μs   (48.36 μs .. 49.33 μs)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 48.45 μs   (48.35 μs .. 48.70 μs)
-  std dev              493.2 ns   (237.4 ns .. 904.2 ns)
+  time                 43.34 μs   (43.21 μs .. 43.47 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 43.21 μs   (43.13 μs .. 43.30 μs)
+  std dev              280.8 ns   (221.0 ns .. 357.9 ns)
 
   benchmarking schnorr/verify_schnorr'
-  time                 99.57 μs   (99.22 μs .. 99.93 μs)
+  time                 94.57 μs   (94.27 μs .. 94.90 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 99.58 μs   (99.36 μs .. 99.82 μs)
-  std dev              774.1 ns   (684.9 ns .. 882.0 ns)
+  mean                 94.13 μs   (93.92 μs .. 94.38 μs)
+  std dev              777.4 ns   (644.8 ns .. 925.8 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 57.96 μs   (57.69 μs .. 58.26 μs)
+  time                 35.21 μs   (35.11 μs .. 35.32 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 57.72 μs   (57.59 μs .. 57.87 μs)
-  std dev              485.2 ns   (401.6 ns .. 609.9 ns)
+  mean                 35.14 μs   (35.09 μs .. 35.20 μs)
+  std dev              184.4 ns   (135.9 ns .. 241.5 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 89.84 μs   (89.56 μs .. 90.12 μs)
+  time                 88.70 μs   (88.44 μs .. 88.93 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 89.74 μs   (89.53 μs .. 89.95 μs)
-  std dev              690.5 ns   (578.1 ns .. 873.0 ns)
+  mean                 88.93 μs   (88.75 μs .. 89.13 μs)
+  std dev              635.0 ns   (517.3 ns .. 963.9 ns)
 
   benchmarking ecdh/ecdh (large)
   time                 140.4 μs   (140.0 μs .. 140.8 μs)
@@ -95,7 +95,8 @@ bench` to run the benchmark suite):
 ```
 
 Ensure you compile with the 'llvm' flag (and that [ppad-fixed][fixed]
-has been compiled with the 'llvm' flag) for maximum performance.
+and [ppad-sha256][sha256] have been compiled with the 'llvm' flag) for
+maximum performance.
 
 ## Security
 
@@ -240,3 +241,4 @@ to get a REPL for the main library.
 [csecp]: https://git.ppad.tech/csecp256k1
 [noble]: https://github.com/paulmillr/noble-secp256k1
 [fixed]: https://git.ppad.tech/fixed
+[sha256]: https://git.ppad.tech/sha256
