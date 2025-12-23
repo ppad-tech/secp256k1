@@ -283,9 +283,12 @@ unroll32 (Wider (# w0, w1, w2, w3 #)) =
     Storable.pokeByteOff ptr 31 (word8 w0)
 {-# INLINABLE unroll32 #-}
 
--- cheeky montgomery-assisted modQ
+-- modQ via conditional subtraction
 modQ :: Wider -> Wider
-modQ = S.from . S.to
+modQ x =
+  let !(Wider xw) = x
+      !(Wider qw) = _CURVE_Q
+  in  W.select x (x - _CURVE_Q) (CT.not# (W.lt# xw qw))
 {-# INLINABLE modQ #-}
 
 -- bytewise xor
