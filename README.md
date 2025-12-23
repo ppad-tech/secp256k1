@@ -76,22 +76,22 @@ bench` to run the benchmark suite):
   std dev              777.4 ns   (644.8 ns .. 925.8 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 35.21 μs   (35.11 μs .. 35.32 μs)
+  time                 34.39 μs   (34.36 μs .. 34.41 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 35.14 μs   (35.09 μs .. 35.20 μs)
-  std dev              184.4 ns   (135.9 ns .. 241.5 ns)
+  mean                 34.37 μs   (34.29 μs .. 34.45 μs)
+  std dev              265.6 ns   (194.4 ns .. 408.5 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 88.70 μs   (88.44 μs .. 88.93 μs)
+  time                 86.63 μs   (86.18 μs .. 86.85 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 88.93 μs   (88.75 μs .. 89.13 μs)
-  std dev              635.0 ns   (517.3 ns .. 963.9 ns)
+  mean                 85.47 μs   (85.20 μs .. 85.76 μs)
+  std dev              955.3 ns   (815.4 ns .. 1.121 μs)
 
   benchmarking ecdh/ecdh (large)
-  time                 140.4 μs   (140.0 μs .. 140.8 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 139.9 μs   (139.5 μs .. 140.3 μs)
-  std dev              1.147 μs   (916.7 ns .. 1.483 μs)
+  time                 138.5 μs   (137.8 μs .. 139.4 μs)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 137.8 μs   (137.4 μs .. 138.4 μs)
+  std dev              1.584 μs   (1.119 μs .. 2.541 μs)
 ```
 
 Ensure you compile with the 'llvm' flag (and that [ppad-fixed][fixed]
