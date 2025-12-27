@@ -1,5 +1,10 @@
 # Changelog
 
+- 0.5.1 (2025-12-27)
+  * Improves the constant-time semantics in wNAF scalar multiplication,
+    replacing "indexing via a constant-time selected value" by performing
+    a full window scan and selecting via mask.
+
 - 0.5.0 (2025-12-21)
   * We get a significant upgrade to all functionality by pulling in the
     ppad-fixed library for large unsigned and Montgomery-form integers.
