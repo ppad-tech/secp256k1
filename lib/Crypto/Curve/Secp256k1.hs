@@ -609,9 +609,9 @@ mul_wnaf# ctxArray ctxW ls
               !is_zero     = CT.from_word_eq# b0 0##
               !c0          = CT.from_word# (Exts.and# w 1##)
               !off_nz      = Exts.minusWord# (Exts.plusWord# off0 abs_b) 1##
-              !off         = CT.select_word# off0 off_nz (CT.not# is_zero)
+              !off         = CT.select_word# off0 off_nz (CT.not is_zero)
 
-              !pr          = index_proj# ctxArray (Exts.word2Int# off)
+              !pr          = ct_index_proj# ctxArray off0 s off
               !neg_pr      = neg# pr
               !pt_zero     = select_proj# pr neg_pr c0
               !pt_nonzero  = select_proj# pr neg_pr bor
@@ -641,6 +641,27 @@ index_proj# (ByteArray arr#) i# =
             , Limb (Exts.indexWordArray# arr# (base# Exts.+# 11#)) #)
   in  (# x, y, z #)
 {-# INLINE index_proj# #-}
+
+-- Constant-time table lookup within a window.
+--
+-- Unconditionally scans all entries from 'base' to 'base + size - 1',
+-- selecting the one where 'index' equals 'target'.
+ct_index_proj#
+  :: ByteArray
+  -> Exts.Word#  -- ^ base index
+  -> Exts.Word#  -- ^ size of window
+  -> Exts.Word#  -- ^ target index
+  -> Proj
+ct_index_proj# arr base size target = loop 0## (# Z, Z, Z #) where
+  loop i acc
+    | Exts.isTrue# (i `Exts.geWord#` size) = acc
+    | otherwise =
+        let !idx  = Exts.plusWord# base i
+            !pt   = index_proj# arr (Exts.word2Int# idx)
+            !eq   = CT.from_word_eq# idx target
+            !nacc = select_proj# acc pt eq
+        in  loop (Exts.plusWord# i 1##) nacc
+{-# INLINE ct_index_proj# #-}
 
 -- ec arithmetic --------------------------------------------------------------
 
@@ -723,7 +744,7 @@ instance Show Context where
 --   >>> sign_ecdsa' tex sec msg
 --   >>> sign_schnorr' tex sec msg aux
 precompute :: Context
-precompute = _precompute 8
+precompute = _precompute 4
 
 -- This is a highly-optimized version of a function originally
 -- translated from noble-secp256k1's "precompute". Points are stored in
