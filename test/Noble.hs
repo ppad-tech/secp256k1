@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns -fno-warn-orphans #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -18,6 +18,7 @@ import qualified Data.ByteString.Base16 as B16
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Word.Wider (Wider(..))
+import qualified Data.Word.Wider as Wider
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, assertBool, assertFailure, testCase)
 
@@ -25,6 +26,9 @@ decodeLenient :: BS.ByteString -> BS.ByteString
 decodeLenient bs = case B16.decode bs of
   Nothing -> error "bang"
   Just b -> b
+
+instance Eq ECDSA where
+  ECDSA r0 s0 == ECDSA r1 s1 = Wider.eq_vartime r0 r1 && Wider.eq_vartime s0 s1
 
 data Ecdsa = Ecdsa {
     ec_valid   :: ![(Int, ValidTest)]

@@ -288,7 +288,7 @@ modQ :: Wider -> Wider
 modQ x =
   let !(Wider xw) = x
       !(Wider qw) = _CURVE_Q
-  in  W.select x (x - _CURVE_Q) (CT.not# (W.lt# xw qw))
+  in  W.select x (x - _CURVE_Q) (CT.not (W.lt# xw qw))
 {-# INLINABLE modQ #-}
 
 -- bytewise xor
@@ -336,7 +336,11 @@ _CURVE_Bm3 = 21
 
 -- Is field element?
 fe :: Wider -> Bool
-fe n = n > 0 && n < _CURVE_P
+fe n = case W.cmp_vartime n 0 of
+  GT -> case W.cmp_vartime n _CURVE_P of
+    LT -> True
+    _  -> False
+  _ -> False
 {-# INLINE fe #-}
 
 -- Is group element?
@@ -364,7 +368,7 @@ instance Eq Projective where
         !x2z1 = bx * az
         !y1z2 = ay * bz
         !y2z1 = by * az
-    in  CT.decide (CT.and# (C.eq x1z2 x2z1) (C.eq y1z2 y2z1))
+    in  CT.decide (CT.and (C.eq x1z2 x2z1) (C.eq y1z2 y2z1))
 
 -- | An ECC-flavoured alias for a secp256k1 point.
 type Pub = Projective
@@ -378,9 +382,9 @@ affine (Projective x y z) =
 
 -- Convert to projective coordinates.
 projective :: Affine -> Projective
-projective = \case
-  Affine 0 0 -> _CURVE_ZERO
-  Affine x y -> Projective x y 1
+projective (Affine x y)
+  | C.eq_vartime x 0 || C.eq_vartime y 0 = _CURVE_ZERO
+  | otherwise = Projective x y 1
 
 -- | secp256k1 generator point.
 _CURVE_G :: Projective
@@ -410,10 +414,7 @@ weierstrass x = C.sqr x * x + _CURVE_Bm
 
 -- Point is valid
 valid :: Projective -> Bool
-valid p = case affine p of
-  Affine x y
-    | C.sqr y /= weierstrass x -> False
-    | otherwise -> True
+valid (affine -> Affine x y) = C.eq_vartime (C.sqr y) (weierstrass x)
 
 -- (bip0340) return point with x coordinate == x and with even y coordinate
 --
@@ -428,10 +429,9 @@ valid p = case affine p of
 lift_vartime :: C.Montgomery -> Maybe Affine
 lift_vartime x = do
   let !c = weierstrass x
-  !y <- C.sqrt c
-  let !y_e | C.odd y   = negate y
+  !y <- C.sqrt_vartime c
+  let !y_e | C.odd_vartime y = negate y
            | otherwise = y
-  guard (C.sqr y_e == c)
   pure $! Affine x y_e
 
 even_y_vartime :: Projective -> Projective
@@ -557,7 +557,7 @@ neg# (# x, y, z #) = (# x, C.neg# y, z #)
 
 mul# :: Proj -> Limb4 -> (# () | Proj #)
 mul# (# px, py, pz #) s
-    | CT.decide (CT.not# (ge# s)) = (# () | #)
+    | CT.decide (CT.not (ge# s)) = (# () | #)
     | otherwise =
         let !(P gx gy gz) = _CURVE_G
             !(C.Montgomery o) = C.one
@@ -576,12 +576,12 @@ mul# (# px, py, pz #) s
 ge# :: Limb4 -> CT.Choice
 ge# n =
   let !(Wider q) = _CURVE_Q
-  in  CT.and# (W.gt# n Z) (W.lt# n q)
+  in  CT.and (W.gt# n Z) (W.lt# n q)
 {-# INLINE ge# #-}
 
 mul_wnaf# :: ByteArray -> Int -> Limb4 -> (# () | Proj #)
 mul_wnaf# ctxArray ctxW ls
-    | CT.decide (CT.not# (ge# ls)) = (# () | #)
+    | CT.decide (CT.not (ge# ls)) = (# () | #)
     | otherwise =
         let !(P zx zy zz) = _CURVE_ZERO
             !(P gx gy gz) = _CURVE_G
@@ -868,7 +868,7 @@ _parse_compressed h (unsafe_roll32 -> x)
   | not (fe x) = Nothing
   | otherwise = do
       let !mx = C.to x
-      !my <- C.sqrt (weierstrass mx)
+      !my <- C.sqrt_vartime (weierstrass mx)
       let !yodd = CT.decide (W.odd (C.retr my))
           !hodd = B.testBit h 0
       pure $!
@@ -998,7 +998,7 @@ _sign_schnorr _mul _SECRET m a = do
       t       = xor bytes_d (hash_aux a)
       rand    = hash_nonce (t <> bytes_p <> m)
       k'      = S.to (unsafe_roll32 rand)
-  guard (k' /= 0) -- negligible probability
+  guard (not (S.eq_vartime k' 0)) -- negligible probability
   pt <- _mul (S.retr k')
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
       k         = S.select k' (negate k') (W.odd y_r)
@@ -1067,7 +1067,7 @@ _verify_schnorr _mul m p sig
       let dif = add pt0 (neg pt1)
       guard (dif /= _CURVE_ZERO)
       let Affine (C.from -> x_R) (C.from -> y_R) = affine dif
-      guard $ not (CT.decide (W.odd y_R) || x_R /= r) -- XX
+      guard $ not (CT.decide (W.odd y_R) || not (W.eq_vartime x_R r))
 {-# INLINE _verify_schnorr #-}
 
 -- hardcoded tag of BIP0340/aux
@@ -1116,7 +1116,7 @@ data ECDSA = ECDSA {
     ecdsa_r :: !Wider
   , ecdsa_s :: !Wider
   }
-  deriving (Eq, Generic)
+  deriving (Generic)
 
 instance Show ECDSA where
   show _ = "<ecdsa signature>"
@@ -1253,7 +1253,7 @@ _sign_ecdsa _mul ty hf _SECRET m = runST $ do
       case mpair of
         Nothing -> pure Nothing
         Just (r, s)
-          | r == 0 -> sign_loop g -- negligible probability
+          | W.eq_vartime r 0 -> sign_loop g -- negligible probability
           | otherwise ->
               let !sig = Just $! ECDSA r s
               in  case ty of
@@ -1267,9 +1267,9 @@ gen_k g = loop g where
   loop drbg = do
     bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
     let can = bits2int bytes
-    if   can >= _CURVE_Q
-    then loop drbg
-    else pure can
+    case W.cmp_vartime can _CURVE_Q of
+      LT -> pure can
+      _  -> loop drbg -- 2 ^ -128 probability
 {-# INLINE gen_k #-}
 
 -- | Verify a "low-s" ECDSA signature for the provided message and
@@ -1288,7 +1288,7 @@ verify_ecdsa
   -> ECDSA         -- ^ signature
   -> Bool
 verify_ecdsa m p sig@(ECDSA _ s)
-  | s > _CURVE_QH = False
+  | CT.decide (W.gt s _CURVE_QH) = False
   | otherwise = verify_ecdsa_unrestricted m p sig
 
 -- | The same as 'verify_ecdsa', except uses a 'Context' to optimise
@@ -1309,7 +1309,7 @@ verify_ecdsa'
   -> ECDSA         -- ^ signature
   -> Bool
 verify_ecdsa' tex m p sig@(ECDSA _ s)
-  | s > _CURVE_QH = False
+  | CT.decide (W.gt s _CURVE_QH) = False
   | otherwise = verify_ecdsa_unrestricted' tex m p sig
 
 -- | Verify an unrestricted ECDSA signature for the provided message and
@@ -1366,6 +1366,6 @@ _verify_ecdsa_unrestricted _mul m p (ECDSA r0 s0) = M.isJust $ do
   let capR = add pt0 pt1
   guard (capR /= _CURVE_ZERO)
   let Affine (S.to . C.retr -> v) _ = affine capR
-  guard (v == r)
+  guard (S.eq_vartime v r)
 {-# INLINE _verify_ecdsa_unrestricted #-}
 
