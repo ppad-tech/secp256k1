@@ -26,8 +26,6 @@ source-repository head
 
 library
   default-language: Haskell2010
-  if !(arch(x86_64) || arch(aarch64))
-    buildable: False
   hs-source-dirs:   lib
   ghc-options:
       -Wall

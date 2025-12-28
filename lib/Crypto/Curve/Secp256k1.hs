@@ -1,5 +1,6 @@
 {-# OPTIONS_HADDOCK prune #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
@@ -9,6 +10,11 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnboxedTuples #-}
 {-# LANGUAGE ViewPatterns #-}
+
+#include "MachDeps.h"
+#if WORD_SIZE_IN_BITS != 64
+#error "ppad-secp256k1 requires a 64-bit architecture"
+#endif
 
 -- |
 -- Module: Crypto.Curve.Secp256k1
