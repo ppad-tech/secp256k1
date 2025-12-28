@@ -62,6 +62,10 @@
         llvm  = pkgs.llvmPackages_19.llvm;
 
         base16 = ppad-base16.packages.${system}.default;
+        base16-llvm =
+          hlib.addBuildTools
+            (hlib.enableCabalFlag base16 "llvm")
+            [ llvm ];
 
         fixed = ppad-fixed.packages.${system}.default;
         fixed-llvm =
@@ -82,7 +86,7 @@
             [ llvm ];
 
         hpkgs = pkgs.haskell.packages.ghc910.extend (new: old: {
-          ppad-base16 = base16;
+          ppad-base16 = base16-llvm;
           ppad-sha256 = sha256-llvm;
           ppad-hmac-drbg = hmac-drbg-llvm;
           ppad-fixed = fixed-llvm;
