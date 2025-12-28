@@ -137,8 +137,7 @@ pattern Z :: Limb4
 pattern Z = (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
 
 pattern P :: Limb4 -> Limb4 -> Limb4 -> Projective
-pattern P x y z =
-  Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
+pattern P x y z = Projective (C.Montgomery x) (C.Montgomery y) (C.Montgomery z)
 {-# COMPLETE P #-}
 
 -- utilities ------------------------------------------------------------------
@@ -285,10 +284,7 @@ unroll32 (Wider (# w0, w1, w2, w3 #)) =
 
 -- modQ via conditional subtraction
 modQ :: Wider -> Wider
-modQ x =
-  let !(Wider xw) = x
-      !(Wider qw) = _CURVE_Q
-  in  W.select x (x - _CURVE_Q) (CT.not (W.lt# xw qw))
+modQ x = W.select x (x - _CURVE_Q) (CT.not (W.lt x _CURVE_Q))
 {-# INLINABLE modQ #-}
 
 -- bytewise xor
@@ -442,8 +438,8 @@ even_y_vartime p = case affine p of
 
 -- Constant-time selection of Projective points.
 select_proj :: Projective -> Projective -> CT.Choice -> Projective
-select_proj (P ax ay az) (P bx by bz) c =
-  P (W.select# ax bx c) (W.select# ay by c) (W.select# az bz c)
+select_proj (Projective ax ay az) (Projective bx by bz) c =
+  Projective (C.select ax bx c) (C.select ay by c) (C.select az bz c)
 {-# INLINE select_proj #-}
 
 -- unboxed internals ----------------------------------------------------------
