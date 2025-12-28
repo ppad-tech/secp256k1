@@ -58,32 +58,33 @@
         lib = "ppad-secp256k1";
 
         pkgs = import nixpkgs { inherit system; };
-        hlib = pkgs.haskell.lib;
+        hlib  = pkgs.haskell.lib;
         llvm  = pkgs.llvmPackages_19.llvm;
+        clang = pkgs.llvmPackages_19.clang;
 
         base16 = ppad-base16.packages.${system}.default;
         base16-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag base16 "llvm")
-            [ llvm ];
+            [ llvm clang ];
 
         fixed = ppad-fixed.packages.${system}.default;
         fixed-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag fixed "llvm")
-            [ llvm ];
+            [ llvm clang ];
 
         sha256 = ppad-sha256.packages.${system}.default;
         sha256-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag sha256 "llvm")
-            [ llvm ];
+            [ llvm clang ];
 
         hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
         hmac-drbg-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag hmac-drbg "llvm")
-            [ llvm ];
+            [ llvm clang ];
 
         hpkgs = pkgs.haskell.packages.ghc910.extend (new: old: {
           ppad-base16 = base16-llvm;
