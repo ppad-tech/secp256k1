@@ -607,7 +607,7 @@ mul_wnaf# ctxArray ctxW ls
 
               !abs_b       = CT.select_word# b0 (Exts.minusWord# mnum b0) bor
               !is_zero     = CT.from_word_eq# b0 0##
-              !c0          = CT.from_word# (Exts.and# w 1##)
+              !c0          = CT.from_bit# (Exts.and# w 1##)
               !off_nz      = Exts.minusWord# (Exts.plusWord# off0 abs_b) 1##
               !off         = CT.select_word# off0 off_nz (CT.not is_zero)
 
