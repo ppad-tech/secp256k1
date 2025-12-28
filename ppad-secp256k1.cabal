@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               ppad-secp256k1
-version:            0.5.1
+version:            0.5.2
 synopsis:           Schnorr signatures, ECDSA, and ECDH on the elliptic curve
                     secp256k1
 license:            MIT
@@ -9,7 +9,7 @@ author:             Jared Tobin
 maintainer:         jared@ppad.tech
 category:           Cryptography
 build-type:         Simple
-tested-with:        GHC == { 9.8.1, 9.6.4 }
+tested-with:        GHC == { 9.10.3 }
 extra-doc-files:    CHANGELOG
 description:
   Pure BIP0340-style Schnorr signatures, deterministic RFC6979 ECDSA, and
@@ -38,9 +38,9 @@ library
   build-depends:
       base >= 4.9 && < 5
     , bytestring >= 0.9 && < 0.13
-    , ppad-hmac-drbg >= 0.1 && < 0.2
-    , ppad-sha256 >= 0.2 && < 0.3
-    , ppad-fixed >= 0.1.2 && < 0.2
+    , ppad-hmac-drbg >= 0.1.3 && < 0.2
+    , ppad-sha256 >= 0.2.4 && < 0.3
+    , ppad-fixed >= 0.1.3 && < 0.2
     , primitive >= 0.8 && < 0.10
 
 test-suite secp256k1-tests

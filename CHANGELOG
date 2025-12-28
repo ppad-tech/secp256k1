@@ -1,5 +1,10 @@
 # Changelog
 
+- 0.5.2 (2025-12-28)
+  * Adds an explicit 64-bit architecture constraint, as implicitly this was
+    assumed.
+  * Tests on GHC.10.3.
+
 - 0.5.1 (2025-12-27)
   * Improves the constant-time semantics in wNAF scalar multiplication,
     replacing "indexing via a constant-time selected value" by performing
