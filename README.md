@@ -64,28 +64,28 @@ bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr' (large)
-  time                 43.34 μs   (43.21 μs .. 43.47 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 43.21 μs   (43.13 μs .. 43.30 μs)
-  std dev              280.8 ns   (221.0 ns .. 357.9 ns)
+  time                 76.57 μs   (76.46 μs .. 76.73 μs)
+                       1.000 R²   (0.999 R² .. 1.000 R²)
+  mean                 77.81 μs   (77.23 μs .. 79.13 μs)
+  std dev              2.732 μs   (1.296 μs .. 5.251 μs)
 
   benchmarking schnorr/verify_schnorr'
-  time                 94.57 μs   (94.27 μs .. 94.90 μs)
+  time                 112.8 μs   (112.4 μs .. 113.1 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 94.13 μs   (93.92 μs .. 94.38 μs)
-  std dev              777.4 ns   (644.8 ns .. 925.8 ns)
+  mean                 112.4 μs   (112.0 μs .. 112.8 μs)
+  std dev              1.246 μs   (1.023 μs .. 1.554 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 34.39 μs   (34.36 μs .. 34.41 μs)
+  time                 51.22 μs   (51.02 μs .. 51.36 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 34.37 μs   (34.29 μs .. 34.45 μs)
-  std dev              265.6 ns   (194.4 ns .. 408.5 ns)
+  mean                 51.08 μs   (50.95 μs .. 51.19 μs)
+  std dev              403.3 ns   (344.5 ns .. 507.5 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 86.63 μs   (86.18 μs .. 86.85 μs)
+  time                 105.1 μs   (104.8 μs .. 105.4 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 85.47 μs   (85.20 μs .. 85.76 μs)
-  std dev              955.3 ns   (815.4 ns .. 1.121 μs)
+  mean                 104.8 μs   (104.4 μs .. 105.8 μs)
+  std dev              2.037 μs   (1.170 μs .. 3.692 μs)
 
   benchmarking ecdh/ecdh (large)
   time                 138.5 μs   (137.8 μs .. 139.4 μs)
