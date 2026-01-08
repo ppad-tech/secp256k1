@@ -76,10 +76,10 @@ bench` to run the benchmark suite):
   std dev              1.246 μs   (1.023 μs .. 1.554 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 51.22 μs   (51.02 μs .. 51.36 μs)
+  time                 45.75 μs   (45.63 μs .. 45.88 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 51.08 μs   (50.95 μs .. 51.19 μs)
-  std dev              403.3 ns   (344.5 ns .. 507.5 ns)
+  mean                 45.68 μs   (45.64 μs .. 45.74 μs)
+  std dev              159.4 ns   (115.8 ns .. 217.1 ns)
 
   benchmarking ecdsa/verify_ecdsa'
   time                 105.1 μs   (104.8 μs .. 105.4 μs)
