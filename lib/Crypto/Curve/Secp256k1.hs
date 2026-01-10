@@ -30,9 +30,13 @@
 --  on the elliptic curve secp256k1.
 
 module Crypto.Curve.Secp256k1 (
-  -- * Field and group parameters
-    _CURVE_Q
-  , _CURVE_P
+  -- * Parsing
+    parse_int256
+  , parse_point
+  , parse_sig
+
+  -- * Serializing
+  , serialize_point
 
   -- * secp256k1 points
   , Pub
@@ -42,14 +46,6 @@ module Crypto.Curve.Secp256k1 (
   , _CURVE_ZERO
   , ge
   , fe
-
-  -- * Parsing
-  , parse_int256
-  , parse_point
-  , parse_sig
-
-  -- * Serializing
-  , serialize_point
 
   -- * ECDH
   , ecdh
@@ -85,6 +81,10 @@ module Crypto.Curve.Secp256k1 (
   , mul
   , mul_vartime
   , mul_wnaf
+
+  -- * Field and group parameters
+  , _CURVE_Q
+  , _CURVE_P
 
   -- Coordinate systems and transformations
   , Affine(..)
@@ -301,10 +301,16 @@ xor = BS.packZipWith B.xor
 -- constants ------------------------------------------------------------------
 
 -- | secp256k1 field prime.
+--
+--   >>> _CURVE_P
+--   0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 _CURVE_P :: Wider
 _CURVE_P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
 
 -- | secp256k1 group order.
+--
+--   >>> _CURVE_Q
+--   0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 _CURVE_Q :: Wider
 _CURVE_Q = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
@@ -372,7 +378,7 @@ instance Eq Projective where
         !y2z1 = by * az
     in  CT.decide (CT.and (C.eq x1z2 x2z1) (C.eq y1z2 y2z1))
 
--- | An ECC-flavoured alias for a secp256k1 point.
+-- | A public key, i.e. secp256k1 point.
 type Pub = Projective
 
 -- Convert to affine coordinates.
@@ -1255,10 +1261,13 @@ _sign_ecdsa _mul ty hf _SECRET m = runST $ do
     -- RFC6979 sec 3.3a
     let entropy = int2octets _SECRET
         nonce   = bits2octets h
-    drbg <- DRBG.new SHA256.hmac entropy nonce mempty
+    drbg <- DRBG.new hmac entropy nonce mempty
     -- RFC6979 sec 2.4
     sign_loop drbg
   where
+    hmac k b = case SHA256.hmac k b of
+      SHA256.MAC mac -> mac
+
     d  = S.to _SECRET
     hm = S.to (bits2int h)
     h  = case hf of
@@ -1289,10 +1298,13 @@ gen_k :: DRBG.DRBG s -> ST s Wider
 gen_k g = loop g where
   loop drbg = do
     bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
-    let can = bits2int bytes
-    case W.cmp_vartime can _CURVE_Q of
-      LT -> pure can
-      _  -> loop drbg -- 2 ^ -128 probability
+    case bytes of
+      Left {}  -> error "ppad-secp256k1: internal error (please report a bug!)"
+      Right bs -> do
+        let can = bits2int bs
+        case W.cmp_vartime can _CURVE_Q of
+          LT -> pure can
+          _  -> loop drbg -- 2 ^ -128 probability
 {-# INLINE gen_k #-}
 
 -- | Verify a "low-s" ECDSA signature for the provided message and
