@@ -29,9 +29,12 @@
       inputs.ppad-nixpkgs.follows = "ppad-nixpkgs";
     };
     ppad-hmac-drbg = {
-      type = "git";
-      url  = "git://git.ppad.tech/hmac-drbg.git";
-      ref  = "master";
+      type = "github";
+      owner = "ppad-tech";
+      repo = "hmac-drbg";
+      # XX temporarily using github mirror
+      # url  = "git://git.ppad.tech/hmac-drbg.git";
+      # ref  = "master";
       inputs.ppad-base16.follows = "ppad-base16";
       inputs.ppad-sha256.follows = "ppad-sha256";
       inputs.ppad-sha512.follows = "ppad-sha512";
@@ -62,25 +65,25 @@
         llvm  = pkgs.llvmPackages_19.llvm;
         clang = pkgs.llvmPackages_19.clang;
 
-        base16 = ppad-base16.packages.${system}.default;
+        base16 = hlib.dontCheck ppad-base16.packages.${system}.default;
         base16-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag base16 "llvm")
             [ llvm clang ];
 
-        fixed = ppad-fixed.packages.${system}.default;
+        fixed = hlib.dontCheck ppad-fixed.packages.${system}.default;
         fixed-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag fixed "llvm")
             [ llvm clang ];
 
-        sha256 = ppad-sha256.packages.${system}.default;
+        sha256 = hlib.dontCheck ppad-sha256.packages.${system}.default;
         sha256-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag sha256 "llvm")
             [ llvm clang ];
 
-        hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
+        hmac-drbg = hlib.dontCheck ppad-hmac-drbg.packages.${system}.default;
         hmac-drbg-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag hmac-drbg "llvm")
@@ -105,6 +108,8 @@
       in
         {
           packages.default = hpkgs.${lib};
+
+          packages.haddock = hpkgs.${lib}.doc;
 
           devShells.default = hpkgs.shellFor {
             packages = p: [
