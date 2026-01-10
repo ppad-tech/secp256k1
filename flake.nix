@@ -65,25 +65,25 @@
         llvm  = pkgs.llvmPackages_19.llvm;
         clang = pkgs.llvmPackages_19.clang;
 
-        base16 = hlib.dontCheck ppad-base16.packages.${system}.default;
+        base16 = ppad-base16.packages.${system}.default;
         base16-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag base16 "llvm")
             [ llvm clang ];
 
-        fixed = hlib.dontCheck ppad-fixed.packages.${system}.default;
+        fixed = ppad-fixed.packages.${system}.default;
         fixed-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag fixed "llvm")
             [ llvm clang ];
 
-        sha256 = hlib.dontCheck ppad-sha256.packages.${system}.default;
+        sha256 = ppad-sha256.packages.${system}.default;
         sha256-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag sha256 "llvm")
             [ llvm clang ];
 
-        hmac-drbg = hlib.dontCheck ppad-hmac-drbg.packages.${system}.default;
+        hmac-drbg = ppad-hmac-drbg.packages.${system}.default;
         hmac-drbg-llvm =
           hlib.addBuildTools
             (hlib.enableCabalFlag hmac-drbg "llvm")
