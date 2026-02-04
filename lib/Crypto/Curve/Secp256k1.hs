@@ -105,7 +105,7 @@ module Crypto.Curve.Secp256k1 (
 
 import Control.Monad (guard)
 import Control.Monad.ST
-import qualified Crypto.DRBG.HMAC as DRBG
+import qualified Crypto.DRBG.HMAC.SHA256 as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
 import qualified Data.ByteString as BS
@@ -1261,13 +1261,10 @@ _sign_ecdsa _mul ty hf _SECRET m = runST $ do
     -- RFC6979 sec 3.3a
     let entropy = int2octets _SECRET
         nonce   = bits2octets h
-    drbg <- DRBG.new hmac entropy nonce mempty
+    drbg <- DRBG.new entropy nonce mempty
     -- RFC6979 sec 2.4
     sign_loop drbg
   where
-    hmac k b = case SHA256.hmac k b of
-      SHA256.MAC mac -> mac
-
     d  = S.to _SECRET
     hm = S.to (bits2int h)
     h  = case hf of
@@ -1283,21 +1280,24 @@ _sign_ecdsa _mul ty hf _SECRET m = runST $ do
                 s  = (hm + d * r) * ki
             pure $! (S.retr r, S.retr s)
       case mpair of
-        Nothing -> pure Nothing
+        Nothing -> do
+          DRBG.wipe g
+          pure Nothing
         Just (r, s)
           | W.eq_vartime r 0 -> sign_loop g -- negligible probability
-          | otherwise ->
+          | otherwise -> do
+              DRBG.wipe g
               let !sig = Just $! ECDSA r s
-              in  case ty of
-                    Unrestricted -> pure sig
-                    LowS -> pure (fmap low sig)
+              pure $ case ty of
+                Unrestricted -> sig
+                LowS -> fmap low sig
 {-# INLINE _sign_ecdsa #-}
 
 -- RFC6979 sec 3.3b
 gen_k :: DRBG.DRBG s -> ST s Wider
 gen_k g = loop g where
   loop drbg = do
-    bytes <- DRBG.gen mempty (fi _CURVE_Q_BYTES) drbg
+    bytes <- DRBG.gen drbg mempty (fi _CURVE_Q_BYTES)
     case bytes of
       Left {}  -> error "ppad-secp256k1: internal error (please report a bug!)"
       Right bs -> do
