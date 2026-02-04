@@ -136,9 +136,6 @@ type Limb4 = (# Limb, Limb, Limb, Limb #)
 -- Unboxed Projective synonym.
 type Proj = (# Limb4, Limb4, Limb4 #)
 
-pattern Zero :: Wider
-pattern Zero = Wider Z
-
 pattern Z :: Limb4
 pattern Z = (# Limb 0##, Limb 0##, Limb 0##, Limb 0## #)
 
@@ -581,6 +578,28 @@ mul# (# px, py, pz #) s
           in  loop (succ j) nacc nf nd nm
 {-# INLINE mul# #-}
 
+mul_vartime# :: Proj -> Limb4 -> (# () | Proj #)
+mul_vartime# (# px, py, pz #) s
+    | zero# s =
+        let !(P zx zy zz) = _CURVE_ZERO
+        in  (# | (# zx, zy, zz #) #)
+    | CT.decide (CT.not (ge# s)) = (# () | #)
+    | otherwise =
+        let !(P zx zy zz) = _CURVE_ZERO
+        in  (# | loop (# zx, zy, zz #) (# px, py, pz #) s #)
+  where
+    zero# (# Limb a, Limb b, Limb c, Limb d #) = Exts.isTrue#
+      ((a `Exts.or#` b `Exts.or#` c `Exts.or#` d) `Exts.eqWord#` 0##)
+
+    loop !r !d !m
+      | zero# m = r
+      | otherwise =
+          let !nd = double# d
+              !(# nm, lsb_set #) = W.shr1_c# m
+              !nr = if CT.decide lsb_set then add_proj# r d else r
+          in  loop nr nd nm
+{-# INLINE mul_vartime# #-}
+
 ge# :: Limb4 -> CT.Choice
 ge# n =
   let !(Wider q) = _CURVE_Q
@@ -720,18 +739,9 @@ mul (P x y z) (Wider s) = case mul# (# x, y, z #) s of
 --
 -- Don't use this function if the scalar could potentially be a secret.
 mul_vartime :: Projective -> Wider -> Maybe Projective
-mul_vartime p = \case
-    Zero -> pure _CURVE_ZERO
-    n | not (ge n) -> Nothing
-      | otherwise  -> pure $! loop _CURVE_ZERO p n
-  where
-    loop !r !d = \case
-      Zero -> r
-      m ->
-        let !nd = double d
-            !(# nm, lsb_set #) = W.shr1_c m
-            !nr = if CT.decide lsb_set then add r d else r
-        in  loop nr nd nm
+mul_vartime (P x y z) (Wider s) = case mul_vartime# (# x, y, z #) s of
+  (# () | #)               -> Nothing
+  (# | (# px, py, pz #) #) -> Just $! P px py pz
 
 -- | Precomputed multiples of the secp256k1 base or generator point.
 data Context = Context {
