@@ -1,5 +1,14 @@
 # Changelog
 
+- 0.5.4 (2026-02-04)
+  * Nonce generation for ECDSA is now more secure due to recent
+    improvements in ppad-hmac-drbg. The DRBG state is now guaranteed
+    to live in only one location on the heap, and it is now wiped
+    explicitly after use.
+
+  * ECDSA signing now allocates about 1.5 orders of magnitude less than
+    it did previously.
+
 - 0.5.3 (2026-01-10)
   * Bumps the ppad-sha256 and ppad-hmac-drbg dependencies.
 

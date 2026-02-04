@@ -148,17 +148,16 @@ differing inputs is attributable to noise:
   std dev              84.10 ns   (67.03 ns .. 112.7 ns)
 
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 52.34 μs   (52.22 μs .. 52.49 μs)
+  time                 45.37 μs   (45.30 μs .. 45.45 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 52.35 μs   (52.30 μs .. 52.42 μs)
-  std dev              205.9 ns   (159.2 ns .. 281.1 ns)
+  mean                 45.31 μs   (45.25 μs .. 45.38 μs)
+  std dev              231.6 ns   (165.5 ns .. 349.8 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 52.40 μs   (52.31 μs .. 52.55 μs)
+  time                 45.76 μs   (45.61 μs .. 45.86 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 52.66 μs   (52.47 μs .. 52.99 μs)
-  std dev              813.7 ns   (427.9 ns .. 1.244 μs)
-  variance introduced by outliers: 10% (moderately inflated)
+  mean                 45.51 μs   (45.42 μs .. 45.60 μs)
+  std dev              285.5 ns   (235.0 ns .. 356.6 ns)
 
   benchmarking ecdh/ecdh (small)
   time                 143.6 μs   (143.4 μs .. 143.7 μs)
@@ -180,26 +179,27 @@ constant across input sizes for all sensitive operations:
   derive_pub
 
     Case                     Allocated  GCs
-    wnaf, sk = 2                   304    0
-    wnaf, sk = 2 ^ 255 - 19        304    0
+    wnaf, sk = 2                   312    0
+    wnaf, sk = 2 ^ 255 - 19        312    0
 
   schnorr
 
     Case                   Allocated  GCs
-    sign_schnorr' (small)     27,104    0
-    sign_schnorr' (large)     27,104    0
+    sign_schnorr' (small)     14,416    0
+    sign_schnorr' (large)     14,416    0
 
   ecdsa
 
     Case                   Allocated  GCs
-    sign_ecdsa' (small)     61,592    0
-    sign_ecdsa' (large)     61,592    0
+    sign_ecdsa' (small)      1,560    0
+    sign_ecdsa' (large)      1,560    0
 
   ecdh
 
     Case          Allocated  GCs
-    ecdh (small)      1,880    0
-    ecdh (large)      1,880    0
+    ecdh (small)        616    0
+    ecdh (large)        616    0
+
 ```
 
 Though constant-resource execution is enforced rigorously, take
