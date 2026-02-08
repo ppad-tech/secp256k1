@@ -76,10 +76,10 @@ bench` to run the benchmark suite):
   std dev              1.246 μs   (1.023 μs .. 1.554 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 45.75 μs   (45.63 μs .. 45.88 μs)
+  time                 44.02 μs   (44.00 μs .. 44.03 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 45.68 μs   (45.64 μs .. 45.74 μs)
-  std dev              159.4 ns   (115.8 ns .. 217.1 ns)
+  mean                 43.99 μs   (43.97 μs .. 44.01 μs)
+  std dev              58.86 ns   (46.66 ns .. 72.16 ns)
 
   benchmarking ecdsa/verify_ecdsa'
   time                 105.1 μs   (104.8 μs .. 105.4 μs)
@@ -148,16 +148,16 @@ differing inputs is attributable to noise:
   std dev              84.10 ns   (67.03 ns .. 112.7 ns)
 
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 45.37 μs   (45.30 μs .. 45.45 μs)
+  time                 43.95 μs   (43.89 μs .. 44.02 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 45.31 μs   (45.25 μs .. 45.38 μs)
-  std dev              231.6 ns   (165.5 ns .. 349.8 ns)
+  mean                 44.04 μs   (43.96 μs .. 44.15 μs)
+  std dev              310.2 ns   (259.9 ns .. 384.6 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 45.76 μs   (45.61 μs .. 45.86 μs)
+  time                 44.02 μs   (44.00 μs .. 44.03 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 45.51 μs   (45.42 μs .. 45.60 μs)
-  std dev              285.5 ns   (235.0 ns .. 356.6 ns)
+  mean                 43.99 μs   (43.97 μs .. 44.01 μs)
+  std dev              58.86 ns   (46.66 ns .. 72.16 ns)
 
   benchmarking ecdh/ecdh (small)
   time                 143.6 μs   (143.4 μs .. 143.7 μs)
