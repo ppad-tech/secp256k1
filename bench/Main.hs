@@ -177,6 +177,7 @@ ecdsa = env setup $ \ ~(tex, big, pub, msg, sig) ->
 
 ecdh :: Benchmark
 ecdh = env setup $ \ ~(big, pub) ->
+    -- the order of these seems to matter particularly for some reason
     bgroup "ecdh" [
       bench "ecdh (small)" $ nf (S.ecdh pub) 2
     , bench "ecdh (large)" $ nf (S.ecdh pub) big
