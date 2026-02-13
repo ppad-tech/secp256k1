@@ -108,6 +108,7 @@ import Control.Monad.ST
 import qualified Crypto.DRBG.HMAC.SHA256 as DRBG
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Bits as B
+import Data.Bits ((.<<.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BI
 import qualified Data.ByteString.Unsafe as BU
@@ -616,10 +617,10 @@ mul_wnaf# ctxArray ctxW ls
   where
     !one                  = (# Limb 1##, Limb 0##, Limb 0##, Limb 0## #)
     !wins                 = fi (256 `quot` ctxW + 1)
-    !size@(GHC.Word.W# s) = 2 ^ (ctxW - 1)
-    !(GHC.Word.W# mask)   = 2 ^ ctxW - 1
+    !size@(GHC.Word.W# s) = 1 .<<. (ctxW - 1)
+    !(GHC.Word.W# mask)   = 1 .<<. ctxW - 1
     !(GHC.Word.W# texW)   = fi ctxW
-    !(GHC.Word.W# mnum)   = 2 ^ ctxW
+    !(GHC.Word.W# mnum)   = 1 .<<. ctxW
 
     loop !j@(GHC.Word.W# w) !acc !f !n@(# Limb lo, _, _, _ #)
       | j == wins = acc
@@ -775,7 +776,7 @@ precompute = _precompute 4
 -- the ByteArray is (size * 96) bytes.
 _precompute :: Int -> Context
 _precompute ctxW = Context {..} where
-  capJ = (2 :: Int) ^ (ctxW - 1)
+  capJ = (1 :: Int) .<<. (ctxW - 1)
   ws = 256 `quot` ctxW + 1
   size = ws * capJ
 
