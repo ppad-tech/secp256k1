@@ -100,6 +100,10 @@ maximum performance.
 
 ## Security
 
+(See both a [security analysis](https://ppad.tech/security-analysis-secp256k1)
+and follow-up [assembly analysis](https://ppad.tech/static-assembly-analysis)
+of the library at [ppad.tech](https://ppad.tech).)
+
 This library aims at the maximum security achievable in a
 garbage-collected language under an optimizing compiler such as GHC, in
 which strict constant-timeness can be [challenging to achieve][const].
