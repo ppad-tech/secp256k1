@@ -51,11 +51,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1766934151,
-        "narHash": "sha256-BUFpuLfrGXE2xi3Wa9TYCEhhRhFp175Ghxnr0JRbG2I=",
+        "lastModified": 1778943993,
+        "narHash": "sha256-8eZyChH7WDgMTj804Ht4VFvS+WER9pPtlwYZgWlO60Q=",
         "ref": "master",
-        "rev": "58dfb7922401a60d5de76825fcd5f6ecbcd7afe0",
-        "revCount": 26,
+        "rev": "480f24d852e100bb87cd69f2eda531bdb1306495",
+        "revCount": 37,
         "type": "git",
         "url": "git://git.ppad.tech/base16.git"
       },
