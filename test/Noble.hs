@@ -52,8 +52,11 @@ execute_valid tex (label, ValidTest {..}) =
         pec = parse_compact vt_signature
         Just sig = _sign_ecdsa_no_hash x msg
         Just sig' = _sign_ecdsa_no_hash' tex x msg
+        Just pub = derive_pub x
     assertEqual mempty sig sig'
     assertEqual mempty pec sig
+    assertBool mempty (_verify_ecdsa_no_hash msg pub sig)
+    assertBool mempty (_verify_ecdsa_no_hash' tex msg pub sig)
 
 execute_invalid_sign :: Context -> (Int, InvalidSignTest) -> TestTree
 execute_invalid_sign tex (label, InvalidSignTest {..}) =

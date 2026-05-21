@@ -97,6 +97,8 @@ module Crypto.Curve.Secp256k1 (
   , _precompute
   , _sign_ecdsa_no_hash
   , _sign_ecdsa_no_hash'
+  , _verify_ecdsa_no_hash
+  , _verify_ecdsa_no_hash'
   , roll32
   , unsafe_roll32
   , unroll32
@@ -1370,7 +1372,8 @@ verify_ecdsa_unrestricted
   -> Pub           -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
-verify_ecdsa_unrestricted = _verify_ecdsa_unrestricted (mul_vartime _CURVE_G)
+verify_ecdsa_unrestricted =
+  _verify_ecdsa_unrestricted (mul_vartime _CURVE_G) Hash
 
 -- | The same as 'verify_ecdsa_unrestricted', except uses a 'Context' to
 --   optimise internal calculations.
@@ -1389,17 +1392,21 @@ verify_ecdsa_unrestricted'
   -> Pub           -- ^ public key
   -> ECDSA         -- ^ signature
   -> Bool
-verify_ecdsa_unrestricted' tex = _verify_ecdsa_unrestricted (mul_wnaf tex)
+verify_ecdsa_unrestricted' tex =
+  _verify_ecdsa_unrestricted (mul_wnaf tex) Hash
 
 _verify_ecdsa_unrestricted
   :: (Wider -> Maybe Projective) -- partially-applied multiplication function
+  -> HashFlag
   -> BS.ByteString
   -> Pub
   -> ECDSA
   -> Bool
-_verify_ecdsa_unrestricted _mul m p (ECDSA r0 s0) = M.isJust $ do
+_verify_ecdsa_unrestricted _mul hf m p (ECDSA r0 s0) = M.isJust $ do
   -- SEC1-v2 4.1.4
-  let h = SHA256.hash m
+  let h = case hf of
+        Hash   -> SHA256.hash m
+        NoHash -> m
   guard (ge r0 && ge s0)
   let r  = S.to r0
       s  = S.to s0
@@ -1407,11 +1414,55 @@ _verify_ecdsa_unrestricted _mul m p (ECDSA r0 s0) = M.isJust $ do
       si = S.inv s
       u1 = S.retr (e * si)
       u2 = S.retr (r * si)
-  pt0 <- _mul u1
+      pt0 = case _mul u1 of
+        Nothing -> _CURVE_ZERO
+        Just pt -> pt
   pt1 <- mul_vartime p u2
   let capR = add pt0 pt1
   guard (capR /= _CURVE_ZERO)
   let Affine (S.to . C.retr -> v) _ = affine capR
   guard (S.eq_vartime v r)
 {-# INLINE _verify_ecdsa_unrestricted #-}
+
+-- | Verify a "low-s" ECDSA signature for the provided message digest
+--   and public key.
+--
+--   Mirrors 'verify_ecdsa', but skips the internal SHA256 step,
+--   treating the input as the message digest itself.
+--
+--   >>> _verify_ecdsa_no_hash dig pub valid_sig
+--   True
+--   >>> _verify_ecdsa_no_hash dig pub invalid_sig
+--   False
+_verify_ecdsa_no_hash
+  :: BS.ByteString -- ^ message digest
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+_verify_ecdsa_no_hash m p sig@(ECDSA _ s)
+  | CT.decide (W.gt s _CURVE_QH) = False
+  | otherwise =
+      _verify_ecdsa_unrestricted (mul_vartime _CURVE_G) NoHash m p sig
+
+-- | The same as '_verify_ecdsa_no_hash', except uses a 'Context' to
+--   optimise internal calculations.
+--
+--   You can expect about a 2x performance increase when using this
+--   function, compared to '_verify_ecdsa_no_hash'.
+--
+--   >>> let !tex = precompute
+--   >>> _verify_ecdsa_no_hash' tex dig pub valid_sig
+--   True
+--   >>> _verify_ecdsa_no_hash' tex dig pub invalid_sig
+--   False
+_verify_ecdsa_no_hash'
+  :: Context       -- ^ secp256k1 context
+  -> BS.ByteString -- ^ message digest
+  -> Pub           -- ^ public key
+  -> ECDSA         -- ^ signature
+  -> Bool
+_verify_ecdsa_no_hash' tex m p sig@(ECDSA _ s)
+  | CT.decide (W.gt s _CURVE_QH) = False
+  | otherwise =
+      _verify_ecdsa_unrestricted (mul_wnaf tex) NoHash m p sig
 
