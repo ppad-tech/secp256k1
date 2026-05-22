@@ -1,5 +1,9 @@
 # Changelog
 
+- 0.5.5 (2026-05-22)
+  * Adds no-hash ECDSA signature verification utilities that skip the
+    internal SHA256 step.
+
 - 0.5.4 (2026-02-04)
   * Nonce generation for ECDSA is now more secure due to recent
     improvements in ppad-hmac-drbg. The DRBG state is now guaranteed
