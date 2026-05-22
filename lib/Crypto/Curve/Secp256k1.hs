@@ -1440,7 +1440,7 @@ _verify_ecdsa_no_hash
   -> ECDSA         -- ^ signature
   -> Bool
 _verify_ecdsa_no_hash m p sig@(ECDSA _ s)
-  | CT.decide (W.gt s _CURVE_QH) = False
+  | W.gt_vartime s _CURVE_QH = False
   | otherwise =
       _verify_ecdsa_unrestricted (mul_vartime _CURVE_G) NoHash m p sig
 
@@ -1462,7 +1462,7 @@ _verify_ecdsa_no_hash'
   -> ECDSA         -- ^ signature
   -> Bool
 _verify_ecdsa_no_hash' tex m p sig@(ECDSA _ s)
-  | CT.decide (W.gt s _CURVE_QH) = False
+  | W.gt_vartime s _CURVE_QH = False
   | otherwise =
       _verify_ecdsa_unrestricted (mul_wnaf tex) NoHash m p sig
 
