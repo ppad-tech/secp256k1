@@ -612,8 +612,7 @@ mul_wnaf# ctxArray ctxW ls
     | CT.decide (CT.not (ge# ls)) = (# () | #)
     | otherwise =
         let !(P zx zy zz) = _CURVE_ZERO
-            !(P gx gy gz) = _CURVE_G
-        in  (# | loop 0 (# zx, zy, zz #) (# gx, gy, gz #) ls #)
+        in  (# | loop 0 (# zx, zy, zz #) ls #)
   where
     !one                  = (# Limb 1##, Limb 0##, Limb 0##, Limb 0## #)
     !wins                 = fi (256 `quot` ctxW + 1)
@@ -622,7 +621,7 @@ mul_wnaf# ctxArray ctxW ls
     !(GHC.Word.W# texW)   = fi ctxW
     !(GHC.Word.W# mnum)   = 1 .<<. ctxW
 
-    loop !j@(GHC.Word.W# w) !acc !f !n@(# Limb lo, _, _, _ #)
+    loop !j !acc !n@(# Limb lo, _, _, _ #)
       | j == wins = acc
       | otherwise =
           let !(GHC.Word.W# off0) = j * size
@@ -635,20 +634,16 @@ mul_wnaf# ctxArray ctxW ls
 
               !abs_b       = CT.select_word# b0 (Exts.minusWord# mnum b0) bor
               !is_zero     = CT.from_word_eq# b0 0##
-              !c0          = CT.from_bit# (Exts.and# w 1##)
               !off_nz      = Exts.minusWord# (Exts.plusWord# off0 abs_b) 1##
               !off         = CT.select_word# off0 off_nz (CT.not is_zero)
 
               !pr          = ct_index_proj# ctxArray off0 s off
               !neg_pr      = neg# pr
-              !pt_zero     = select_proj# pr neg_pr c0
               !pt_nonzero  = select_proj# pr neg_pr bor
 
-              !f_added     = add_proj# f pt_zero
               !acc_added   = add_proj# acc pt_nonzero
               !nacc        = select_proj# acc_added acc is_zero
-              !nf          = select_proj# f f_added is_zero
-          in  loop (succ j) nacc nf n1
+          in  loop (succ j) nacc n1
 {-# INLINE mul_wnaf# #-}
 
 -- retrieve a point (as an unboxed tuple) from a context array
