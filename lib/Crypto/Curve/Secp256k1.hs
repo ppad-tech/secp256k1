@@ -567,18 +567,16 @@ mul# :: Proj -> Limb4 -> (# () | Proj #)
 mul# (# px, py, pz #) s
     | CT.decide (CT.not (ge# s)) = (# () | #)
     | otherwise =
-        let !(P gx gy gz) = _CURVE_G
-            !(C.Montgomery o) = C.one
-        in  loop (0 :: Int) (# Z, o, Z #) (# gx, gy, gz #) (# px, py, pz #) s
+        let !(C.Montgomery o) = C.one
+        in  loop (0 :: Int) (# Z, o, Z #) (# px, py, pz #) s
   where
-    loop !j !a !f !d !_SECRET
+    loop !j !a !d !_SECRET
       | j == _CURVE_Q_BITS = (# | a #)
       | otherwise =
           let !nd = double# d
               !(# nm, lsb_set #) = W.shr1_c# _SECRET
               !nacc = select_proj# a (add_proj# a d) lsb_set
-              !nf   = select_proj# (add_proj# f d) f lsb_set
-          in  loop (succ j) nacc nf nd nm
+          in  loop (succ j) nacc nd nm
 {-# INLINE mul# #-}
 
 mul_vartime# :: Proj -> Limb4 -> (# () | Proj #)
