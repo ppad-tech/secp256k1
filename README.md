@@ -64,34 +64,34 @@ bench` to run the benchmark suite):
 
 ```
   benchmarking schnorr/sign_schnorr' (large)
-  time                 76.57 μs   (76.46 μs .. 76.73 μs)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 77.81 μs   (77.23 μs .. 79.13 μs)
-  std dev              2.732 μs   (1.296 μs .. 5.251 μs)
+  time                 42.04 μs   (42.00 μs .. 42.11 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 42.08 μs   (42.05 μs .. 42.13 μs)
+  std dev              139.4 ns   (100.1 ns .. 198.1 ns)
 
   benchmarking schnorr/verify_schnorr'
-  time                 112.8 μs   (112.4 μs .. 113.1 μs)
+  time                 88.88 μs   (88.69 μs .. 89.17 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 112.4 μs   (112.0 μs .. 112.8 μs)
-  std dev              1.246 μs   (1.023 μs .. 1.554 μs)
+  mean                 88.85 μs   (88.70 μs .. 89.25 μs)
+  std dev              747.4 ns   (346.3 ns .. 1.409 μs)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 44.02 μs   (44.00 μs .. 44.03 μs)
+  time                 25.76 μs   (25.73 μs .. 25.80 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 43.99 μs   (43.97 μs .. 44.01 μs)
-  std dev              58.86 ns   (46.66 ns .. 72.16 ns)
+  mean                 25.76 μs   (25.74 μs .. 25.81 μs)
+  std dev              105.5 ns   (49.05 ns .. 205.4 ns)
 
   benchmarking ecdsa/verify_ecdsa'
-  time                 105.1 μs   (104.8 μs .. 105.4 μs)
+  time                 85.66 μs   (85.60 μs .. 85.72 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 104.8 μs   (104.4 μs .. 105.8 μs)
-  std dev              2.037 μs   (1.170 μs .. 3.692 μs)
+  mean                 85.65 μs   (85.59 μs .. 85.71 μs)
+  std dev              190.2 ns   (155.3 ns .. 247.4 ns)
 
   benchmarking ecdh/ecdh (large)
-  time                 89.93 μs   (89.72 μs .. 90.22 μs)
+  time                 88.01 μs   (87.80 μs .. 88.30 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 90.22 μs   (90.05 μs .. 90.39 μs)
-  std dev              588.5 ns   (487.4 ns .. 682.0 ns)
+  mean                 87.94 μs   (87.81 μs .. 88.13 μs)
+  std dev              492.2 ns   (361.8 ns .. 701.2 ns)
 ```
 
 Ensure you compile with the 'llvm' flag (and that [ppad-fixed][fixed]
@@ -128,52 +128,52 @@ differing inputs is attributable to noise:
 
 ```
   benchmarking derive_pub/wnaf, sk = 2
-  time                 29.67 μs   (29.64 μs .. 29.71 μs)
+  time                 16.63 μs   (16.58 μs .. 16.67 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 29.68 μs   (29.64 μs .. 29.71 μs)
-  std dev              121.1 ns   (83.80 ns .. 177.2 ns)
+  mean                 16.54 μs   (16.50 μs .. 16.58 μs)
+  std dev              138.3 ns   (123.6 ns .. 156.4 ns)
 
   benchmarking derive_pub/wnaf, sk = 2 ^ 255 - 19
-  time                 29.68 μs   (29.65 μs .. 29.72 μs)
+  time                 16.63 μs   (16.61 μs .. 16.66 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 29.71 μs   (29.68 μs .. 29.75 μs)
-  std dev              106.7 ns   (71.74 ns .. 174.7 ns)
+  mean                 16.63 μs   (16.60 μs .. 16.65 μs)
+  std dev              75.03 ns   (59.63 ns .. 101.5 ns)
 
   benchmarking schnorr/sign_schnorr' (small)
-  time                 76.27 μs   (76.21 μs .. 76.32 μs)
+  time                 42.12 μs   (42.06 μs .. 42.22 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 76.44 μs   (76.40 μs .. 76.50 μs)
-  std dev              162.3 ns   (123.1 ns .. 246.7 ns)
+  mean                 42.13 μs   (42.08 μs .. 42.22 μs)
+  std dev              245.3 ns   (120.9 ns .. 390.8 ns)
 
   benchmarking schnorr/sign_schnorr' (large)
-  time                 76.35 μs   (76.31 μs .. 76.38 μs)
+  time                 42.04 μs   (42.00 μs .. 42.11 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 76.37 μs   (76.35 μs .. 76.40 μs)
-  std dev              84.10 ns   (67.03 ns .. 112.7 ns)
+  mean                 42.08 μs   (42.05 μs .. 42.13 μs)
+  std dev              139.4 ns   (100.1 ns .. 198.1 ns)
 
   benchmarking ecdsa/sign_ecdsa' (small)
-  time                 43.95 μs   (43.89 μs .. 44.02 μs)
+  time                 25.76 μs   (25.74 μs .. 25.77 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 44.04 μs   (43.96 μs .. 44.15 μs)
-  std dev              310.2 ns   (259.9 ns .. 384.6 ns)
+  mean                 25.75 μs   (25.74 μs .. 25.77 μs)
+  std dev              52.46 ns   (42.15 ns .. 68.26 ns)
 
   benchmarking ecdsa/sign_ecdsa' (large)
-  time                 44.02 μs   (44.00 μs .. 44.03 μs)
+  time                 25.76 μs   (25.73 μs .. 25.80 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 43.99 μs   (43.97 μs .. 44.01 μs)
-  std dev              58.86 ns   (46.66 ns .. 72.16 ns)
+  mean                 25.76 μs   (25.74 μs .. 25.81 μs)
+  std dev              105.5 ns   (49.05 ns .. 205.4 ns)
 
   benchmarking ecdh/ecdh (small)
-  time                 143.6 μs   (143.4 μs .. 143.7 μs)
+  time                 87.40 μs   (87.33 μs .. 87.49 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 143.7 μs   (143.3 μs .. 144.6 μs)
-  std dev              2.022 μs   (846.9 ns .. 3.402 μs)
+  mean                 87.41 μs   (87.34 μs .. 87.48 μs)
+  std dev              218.7 ns   (176.6 ns .. 274.3 ns)
 
   benchmarking ecdh/ecdh (large)
-  time                 143.8 μs   (143.7 μs .. 143.9 μs)
+  time                 88.01 μs   (87.80 μs .. 88.30 μs)
                        1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 143.8 μs   (143.7 μs .. 143.9 μs)
-  std dev              385.2 ns   (265.9 ns .. 544.5 ns)
+  mean                 87.94 μs   (87.81 μs .. 88.13 μs)
+  std dev              492.2 ns   (361.8 ns .. 701.2 ns)
 ```
 
 Note also that care has been taken to ensure that allocation is held
