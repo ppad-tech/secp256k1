@@ -1,5 +1,11 @@
 # Changelog
 
+- 0.5.7 (2026-06-07)
+  * Improves the performance of all wNAF-based signing & verification
+    functions by about 1.5-2x, due to optimizations in 1) the
+    constant-time wNAF scalar multiplication function, and 2) upstream
+    modular field inversion (in ppad-fixed).
+
 - 0.5.6 (2026-06-07)
   * Improves the wall-clock performance of the constant-time, non-wNAF
     scalar multiplication function by about 35%. ECDH also speeds up
