@@ -1,5 +1,10 @@
 # Changelog
 
+- 0.5.6 (2026-06-07)
+  * Improves the wall-clock performance of the constant-time, non-wNAF
+    scalar multiplication function by about 35%. ECDH also speeds up
+    proportionally as a direct result.
+
 - 0.5.5 (2026-05-22)
   * Adds no-hash ECDSA signature verification utilities that skip the
     internal SHA256 step.
