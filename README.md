@@ -88,10 +88,10 @@ bench` to run the benchmark suite):
   std dev              2.037 μs   (1.170 μs .. 3.692 μs)
 
   benchmarking ecdh/ecdh (large)
-  time                 138.5 μs   (137.8 μs .. 139.4 μs)
-                       1.000 R²   (0.999 R² .. 1.000 R²)
-  mean                 137.8 μs   (137.4 μs .. 138.4 μs)
-  std dev              1.584 μs   (1.119 μs .. 2.541 μs)
+  time                 89.93 μs   (89.72 μs .. 90.22 μs)
+                       1.000 R²   (1.000 R² .. 1.000 R²)
+  mean                 90.22 μs   (90.05 μs .. 90.39 μs)
+  std dev              588.5 ns   (487.4 ns .. 682.0 ns)
 ```
 
 Ensure you compile with the 'llvm' flag (and that [ppad-fixed][fixed]
