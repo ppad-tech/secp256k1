@@ -1044,7 +1044,9 @@ _sign_schnorr _mul _SECRET m a = do
       t       = xor bytes_d (hash_aux a)
       rand    = hash_nonce (t <> bytes_p <> m)
       k'      = S.to (unsafe_roll32 rand)
-  guard (not (S.eq_vartime k' 0)) -- negligible probability
+  -- negligible probability, but k' is secret, so compare without
+  -- short-circuiting and decide only on the result
+  guard (not (CT.decide (S.eq k' 0)))
   pt <- _mul (S.retr k')
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
       k         = S.select k' (negate k') (W.odd y_r)
