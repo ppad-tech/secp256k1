@@ -896,13 +896,14 @@ parse_int256 bs = do
 parse_point :: BS.ByteString -> Maybe Projective
 parse_point bs
     | len == 32 = _parse_bip0340 bs
-    | len == 33 = _parse_compressed h t
-    | len == 65 = _parse_uncompressed h t
-    | otherwise = Nothing
+    | otherwise = case BS.uncons bs of
+        Nothing -> Nothing
+        Just (h, t)
+          | len == 33 -> _parse_compressed h t
+          | len == 65 -> _parse_uncompressed h t
+          | otherwise -> Nothing
   where
     len = BS.length bs
-    h = BU.unsafeIndex bs 0 -- lazy
-    t = BS.drop 1 bs
 
 -- input is guaranteed to be 32B in length
 _parse_bip0340 :: BS.ByteString -> Maybe Projective
