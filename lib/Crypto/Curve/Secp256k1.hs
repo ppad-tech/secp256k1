@@ -1111,11 +1111,16 @@ _verify_schnorr _mul m p sig
   | otherwise = M.isJust $ do
       let capP = even_y_vartime p
           (unsafe_roll32 -> r, unsafe_roll32 -> s) = BS.splitAt 32 sig
-      guard (fe r && ge s)
+      -- bip0340 fails only on r >= p and s >= n, so zero is permitted
+      guard (W.lt_vartime r _CURVE_P && W.lt_vartime s _CURVE_Q)
       let Affine (C.retr -> x_P) _ = affine capP
           e = modQ . unsafe_roll32 $
             hash_challenge (unroll32 r <> unroll32 x_P <> m)
-      pt0 <- _mul s
+      -- mul_wnaf rejects a zero scalar, mul_vartime does not; agree on
+      -- the identity so both multiplication functions behave alike
+      pt0 <- if   W.eq_vartime s 0
+             then pure _CURVE_ZERO
+             else _mul s
       pt1 <- mul_vartime capP e
       let dif = add pt0 (neg pt1)
       guard (dif /= _CURVE_ZERO)
