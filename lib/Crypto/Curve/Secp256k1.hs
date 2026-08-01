@@ -996,7 +996,9 @@ ecdh pub _SECRET = do
 --   injection" attacks). This entropy is /supplemental/ to security,
 --   and the cryptographic security of the signature scheme itself does
 --   not rely on it, so it is not strictly required; 32 zero bytes can
---   be used in its stead (and can be supplied via 'mempty').
+--   be used in its stead.
+--
+--   The auxiliary input is hashed, so any length input is accepted.
 --
 --   >>> import qualified System.Entropy as E
 --   >>> aux <- E.getEntropy 32
