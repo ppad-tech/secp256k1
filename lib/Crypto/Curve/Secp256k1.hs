@@ -1314,7 +1314,8 @@ _sign_ecdsa _mul ty hf _SECRET m
           DRBG.wipe g
           pure Nothing
         Just (r, s)
-          | W.eq_vartime r 0 -> sign_loop g -- negligible probability
+          -- sec1-v2 4.1.3 retries on either being zero
+          | W.eq_vartime r 0 || W.eq_vartime s 0 -> sign_loop g
           | otherwise -> do
               DRBG.wipe g
               let !sig = Just $! ECDSA r s
@@ -1332,9 +1333,9 @@ gen_k g = loop g where
       Left {}  -> error "ppad-secp256k1: internal error (please report a bug!)"
       Right bs -> do
         let can = bits2int bs
-        case W.cmp_vartime can _CURVE_Q of
-          LT -> pure can
-          _  -> loop drbg -- 2 ^ -128 probability
+        if   ge can -- rfc6979 requires k in [1, q - 1]
+        then pure can
+        else loop drbg -- 2 ^ -128 probability
 {-# INLINE gen_k #-}
 
 -- | Verify a "low-s" ECDSA signature for the provided message and
