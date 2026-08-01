@@ -424,6 +424,14 @@ weierstrass x = C.sqr x * x + _CURVE_Bm
 valid :: Projective -> Bool
 valid (affine -> Affine x y) = C.eq_vartime (C.sqr y) (weierstrass x)
 
+-- Point is the identity, i.e. the point at infinity.
+--
+-- Note that 'affine' maps the identity to (0, 0), so a point must be
+-- tested here, and not via its affine coordinates.
+is_inf :: Projective -> Bool
+is_inf (Projective _ _ z) = CT.decide (C.eq z 0)
+{-# INLINE is_inf #-}
+
 -- (bip0340) return point with x coordinate == x and with even y coordinate
 --
 -- conceptually:
@@ -1090,6 +1098,9 @@ _verify_schnorr
   -> Bool
 _verify_schnorr _mul m p sig
   | BS.length sig /= 64 = False
+  -- e * P vanishes for the identity, dropping the challenge from the
+  -- verification equation entirely
+  | is_inf p = False
   | otherwise = M.isJust $ do
       let capP = even_y_vartime p
           (unsafe_roll32 -> r, unsafe_roll32 -> s) = BS.splitAt 32 sig
@@ -1406,6 +1417,9 @@ _verify_ecdsa_unrestricted _mul hf m p (ECDSA r0 s0) = M.isJust $ do
   let h = case hf of
         Hash   -> SHA256.hash m
         NoHash -> m
+  -- u2 * P vanishes for the identity, leaving an equation an attacker
+  -- can satisfy by choosing s freely
+  guard (not (is_inf p))
   guard (ge r0 && ge s0)
   let r  = S.to r0
       s  = S.to s0

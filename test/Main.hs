@@ -5,10 +5,12 @@
 module Main where
 
 import Crypto.Curve.Secp256k1
+import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
+import qualified Numeric.Montgomery.Secp256k1.Scalar as S
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Data.Text.IO as TIO
@@ -48,7 +50,7 @@ main = do
   case pen of
     Nothing -> error "couldn't parse wycheproof vectors"
     Just (w0, w1, w2, no, ip) -> defaultMain $ testGroup "ppad-secp256k1" [
-        units
+        units tex
       , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256)" Unrestricted w0
       , wycheproof_ecdsa_verify_tests tex "(ecdsa, sha256, low-s)" LowS w1
       , wycheproof_ecdh_tests "(ecdh)" w2
@@ -67,13 +69,71 @@ wycheproof_ecdh_tests msg WE.Wycheproof {..} =
   testGroup ("wycheproof vectors " <> msg) $
     fmap (WE.execute_group) wp_testGroups
 
-units :: TestTree
-units = testGroup "unit tests" [
+units :: Context -> TestTree
+units tex = testGroup "unit tests" [
     parse_point_tests
   , serialize_point_tests
   , add_tests
   , dub_tests
+  , identity_pubkey_tests tex
   ]
+
+-- A public key at infinity annihilates the term carrying the challenge
+-- (schnorr) or the key (ecdsa), leaving a verification equation an
+-- attacker can satisfy for any message.
+identity_pubkey_tests :: Context -> TestTree
+identity_pubkey_tests tex = testGroup "identity public key" [
+    schnorr_identity_test tex
+  , ecdsa_identity_test tex
+  ]
+
+forgery_msg :: BS.ByteString
+forgery_msg = "arbitrary attacker-chosen message"
+
+-- The recovered point is s * G - e * O = s * G for every challenge e,
+-- so (x(s * G), s) satisfies the equation whenever s * G has even y.
+schnorr_forgery :: Maybe (Projective, BS.ByteString)
+schnorr_forgery = do
+  let sec_bytes = decodeLenient
+        "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef"
+  sec <- parse_int256 sec_bytes
+  pub <- derive_pub sec
+  pure (pub, BS.drop 1 (serialize_point pub) <> sec_bytes)
+
+schnorr_identity_test :: Context -> TestTree
+schnorr_identity_test tex =
+  testCase "schnorr verification rejects the identity" $
+    case schnorr_forgery of
+      Nothing -> assertFailure "couldn't construct forgery"
+      Just (pub, sig) -> do
+        assertEqual "forgery is well-formed (even y)"
+          "\002" (BS.take 1 (serialize_point pub))
+        assertBool mempty (not (verify_schnorr forgery_msg _CURVE_ZERO sig))
+        assertBool mempty
+          (not (verify_schnorr' tex forgery_msg _CURVE_ZERO sig))
+
+-- Verification reduces to x(u1 * G) == r for u1 = e / s, so choosing
+-- u1 freely and setting s = e / u1 satisfies it for any message.
+ecdsa_forgery :: Maybe ECDSA
+ecdsa_forgery = do
+  e   <- parse_int256 (SHA256.hash forgery_msg)
+  u1  <- parse_int256 (BS.replicate 32 0x22)
+  cap <- derive_pub u1
+  r   <- parse_int256 (BS.drop 1 (serialize_point cap))
+  pure (ECDSA r (S.retr (S.to e * S.inv (S.to u1))))
+
+ecdsa_identity_test :: Context -> TestTree
+ecdsa_identity_test tex =
+  testCase "ecdsa verification rejects the identity" $
+    case ecdsa_forgery of
+      Nothing -> assertFailure "couldn't construct forgery"
+      Just sig@(ECDSA r s) -> do
+        assertBool "forgery is well-formed (r in range)" (ge r)
+        assertBool "forgery is well-formed (s in range)" (ge s)
+        assertBool mempty
+          (not (verify_ecdsa_unrestricted forgery_msg _CURVE_ZERO sig))
+        assertBool mempty
+          (not (verify_ecdsa_unrestricted' tex forgery_msg _CURVE_ZERO sig))
 
 parse_point_tests :: TestTree
 parse_point_tests = testGroup "parse_point tests" [
