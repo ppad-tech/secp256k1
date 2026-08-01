@@ -902,7 +902,9 @@ parse_point bs
 
 -- input is guaranteed to be 32B in length
 _parse_bip0340 :: BS.ByteString -> Maybe Projective
-_parse_bip0340 = fmap projective . lift_vartime . C.to . unsafe_roll32
+_parse_bip0340 (unsafe_roll32 -> x) = do
+  guard (fe x) -- bip0340 "fail if x >= p"; x == 0 has no lift anyway
+  fmap projective (lift_vartime (C.to x))
 
 -- bytestring input is guaranteed to be 32B in length
 _parse_compressed :: Word8 -> BS.ByteString -> Maybe Projective
@@ -924,6 +926,7 @@ _parse_uncompressed :: Word8 -> BS.ByteString -> Maybe Projective
 _parse_uncompressed h bs = do
   let (unsafe_roll32 -> x, unsafe_roll32 -> y) = BS.splitAt _CURVE_Q_BYTES bs
   guard (h == 0x04)
+  guard (fe x && fe y) -- sec1-v2 requires both in [0, p - 1]
   let !p = Projective (C.to x) (C.to y) 1
   guard (valid p)
   pure $! p

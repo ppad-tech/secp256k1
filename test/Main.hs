@@ -10,6 +10,7 @@ import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as AT
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
+import qualified Data.Maybe as M
 import qualified Numeric.Montgomery.Secp256k1.Scalar as S
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -140,7 +141,34 @@ parse_point_tests = testGroup "parse_point tests" [
     parse_point_test_p
   , parse_point_test_q
   , parse_point_test_r
+  , noncanonical_tests
   ]
+
+-- The field prime is within 2 ^ 32 of 2 ^ 256, so a coordinate in
+-- [p, 2 ^ 256) reduces to a small one, giving a second encoding of a
+-- point with a small x. x = 1 is such a point.
+noncanonical_tests :: TestTree
+noncanonical_tests = testGroup "non-canonical coordinates" [
+    testCase "32-byte x-only, x = 1" $
+      assertBool mempty (M.isJust (parse_point (decodeLenient x1_hex)))
+  , testCase "32-byte x-only, x = p + 1" $
+      assertEqual mempty Nothing
+        (fmap serialize_point (parse_point (decodeLenient p1_hex)))
+  , testCase "65-byte uncompressed, x = 1" $
+      assertBool mempty
+        (M.isJust (parse_point (decodeLenient ("04" <> x1_hex <> y1_hex))))
+  , testCase "65-byte uncompressed, x = p + 1" $
+      assertEqual mempty Nothing
+        (fmap serialize_point
+          (parse_point (decodeLenient ("04" <> p1_hex <> y1_hex))))
+  ]
+
+-- x-coordinate of a curve point, and the field prime plus that
+-- coordinate, which must not parse
+x1_hex, p1_hex, y1_hex :: BS.ByteString
+x1_hex = "0000000000000000000000000000000000000000000000000000000000000001"
+p1_hex = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30"
+y1_hex = "4218f20ae6c646b363db68605822fb14264ca8d2587fdd6fbc750d587e76a7ee"
 
 serialize_point_tests :: TestTree
 serialize_point_tests = testGroup "serialize_point tests" [
