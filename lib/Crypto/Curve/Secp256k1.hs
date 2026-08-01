@@ -719,6 +719,10 @@ add_proj (P ax ay az) (P bx by bz) =
 {-# INLINABLE add_proj #-}
 
 -- algo 8, renes et al, 2015
+--
+-- the second point must be affine, i.e. have z == 1. this is not
+-- checked, and the result is meaningless otherwise; use add_proj if
+-- the second point may be in projective form.
 add_mixed :: Projective -> Projective -> Projective
 add_mixed (P ax ay az) (P bx by bz) =
   let !(# x, y, z #) = add_mixed# (# ax, ay, az #) (# bx, by, bz #)
