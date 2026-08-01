@@ -1239,7 +1239,7 @@ sign_ecdsa_unrestricted' tex = _sign_ecdsa (mul_wnaf tex) Unrestricted Hash
 
 -- Produce a "low-s" ECDSA signature for the provided message, using
 -- the provided private key. Assumes that the message has already been
--- pre-hashed.
+-- pre-hashed, such that the digest is exactly 32 bytes.
 --
 -- (Useful for testing against noble-secp256k1's suite, in which messages
 -- in the test vectors have already been hashed.)
@@ -1247,14 +1247,18 @@ _sign_ecdsa_no_hash
   :: Wider         -- ^ secret key
   -> BS.ByteString -- ^ message digest
   -> Maybe ECDSA
-_sign_ecdsa_no_hash = _sign_ecdsa (mul _CURVE_G) LowS NoHash
+_sign_ecdsa_no_hash _SECRET m
+  | BS.length m /= _CURVE_Q_BYTES = Nothing
+  | otherwise = _sign_ecdsa (mul _CURVE_G) LowS NoHash _SECRET m
 
 _sign_ecdsa_no_hash'
   :: Context
   -> Wider
   -> BS.ByteString
   -> Maybe ECDSA
-_sign_ecdsa_no_hash' tex = _sign_ecdsa (mul_wnaf tex) LowS NoHash
+_sign_ecdsa_no_hash' tex _SECRET m
+  | BS.length m /= _CURVE_Q_BYTES = Nothing
+  | otherwise = _sign_ecdsa (mul_wnaf tex) LowS NoHash _SECRET m
 
 _sign_ecdsa
   :: (Wider -> Maybe Projective) -- partially-applied multiplication function
@@ -1421,7 +1425,8 @@ _verify_ecdsa_unrestricted _mul hf m p (ECDSA r0 s0) = M.isJust $ do
 --   and public key.
 --
 --   Mirrors 'verify_ecdsa', but skips the internal SHA256 step,
---   treating the input as the message digest itself.
+--   treating the input as the message digest itself. Fails to verify
+--   if the digest is not exactly 32 bytes.
 --
 --   >>> _verify_ecdsa_no_hash dig pub valid_sig
 --   True
@@ -1433,6 +1438,7 @@ _verify_ecdsa_no_hash
   -> ECDSA         -- ^ signature
   -> Bool
 _verify_ecdsa_no_hash m p sig@(ECDSA _ s)
+  | BS.length m /= _CURVE_Q_BYTES = False
   | W.gt_vartime s _CURVE_QH = False
   | otherwise =
       _verify_ecdsa_unrestricted (mul_vartime _CURVE_G) NoHash m p sig
@@ -1455,6 +1461,7 @@ _verify_ecdsa_no_hash'
   -> ECDSA         -- ^ signature
   -> Bool
 _verify_ecdsa_no_hash' tex m p sig@(ECDSA _ s)
+  | BS.length m /= _CURVE_Q_BYTES = False
   | W.gt_vartime s _CURVE_QH = False
   | otherwise =
       _verify_ecdsa_unrestricted (mul_wnaf tex) NoHash m p sig
