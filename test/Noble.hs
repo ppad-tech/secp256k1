@@ -70,15 +70,16 @@ execute_invalid_sign tex (label, InvalidSignTest {..}) =
 
 execute_invalid_verify :: Context -> (Int, InvalidVerifyTest) -> TestTree
 execute_invalid_verify tex (label, InvalidVerifyTest {..}) =
-  testCase ("noble-secp256k1, invalid verify (" <> show label <> ")") $
-    case parse_point (decodeLenient ivv_Q) of
-      Nothing -> assertBool "no parse" True
-      Just pub -> do
+    testCase ("noble-secp256k1, invalid verify (" <> show label <> ")") $
+      -- every vector in this group must be rejected, whether by the
+      -- point parser or by verification itself
+      assertBool mempty (not accepted)
+  where
+    accepted = case parse_point (decodeLenient ivv_Q) of
+      Nothing  -> False
+      Just pub ->
         let sig = parse_compact ivv_signature
-            ver = verify_ecdsa ivv_m pub sig
-            ver' = verify_ecdsa' tex ivv_m pub sig
-        assertBool mempty (not ver)
-        assertBool mempty (not ver')
+        in  verify_ecdsa ivv_m pub sig || verify_ecdsa' tex ivv_m pub sig
 
 -- parser helper
 toBS :: T.Text -> BS.ByteString
