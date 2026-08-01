@@ -1267,13 +1267,15 @@ _sign_ecdsa
   -> Wider
   -> BS.ByteString
   -> Maybe ECDSA
-_sign_ecdsa _mul ty hf _SECRET m = runST $ do
-    -- RFC6979 sec 3.3a
-    let entropy = int2octets _SECRET
-        nonce   = bits2octets h
-    drbg <- DRBG.new entropy nonce mempty
-    -- RFC6979 sec 2.4
-    sign_loop drbg
+_sign_ecdsa _mul ty hf _SECRET m
+  | not (ge _SECRET) = Nothing
+  | otherwise = runST $ do
+      -- RFC6979 sec 3.3a
+      let entropy = int2octets _SECRET
+          nonce   = bits2octets h
+      drbg <- DRBG.new entropy nonce mempty
+      -- RFC6979 sec 2.4
+      sign_loop drbg
   where
     d  = S.to _SECRET
     hm = S.to (bits2int h)

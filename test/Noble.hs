@@ -9,7 +9,6 @@ module Noble (
   , execute_ecdsa
   ) where
 
-import Control.Exception
 import Crypto.Curve.Secp256k1
 import Data.Aeson ((.:))
 import qualified Data.Aeson as A
@@ -61,16 +60,13 @@ execute_valid tex (label, ValidTest {..}) =
 execute_invalid_sign :: Context -> (Int, InvalidSignTest) -> TestTree
 execute_invalid_sign tex (label, InvalidSignTest {..}) =
     testCase ("noble-secp256k1, invalid sign (" <> show label <> ")") $ do
-      let x   = ivs_d
-          m   = ivs_m
-      err <- catch (pure (_sign_ecdsa_no_hash x m) >> pure False) handler
-      err' <- catch (pure (_sign_ecdsa_no_hash' tex x m) >> pure False) handler
-      if   err || err'
-      then assertFailure "expected error not caught"
-      else pure ()
+      expect_nothing (_sign_ecdsa_no_hash ivs_d ivs_m)
+      expect_nothing (_sign_ecdsa_no_hash' tex ivs_d ivs_m)
   where
-    handler :: ErrorCall -> IO Bool
-    handler _ = pure True
+    expect_nothing :: Maybe ECDSA -> IO ()
+    expect_nothing Nothing  = pure ()
+    expect_nothing (Just _) =
+      assertFailure "signed with an out-of-range secret key"
 
 execute_invalid_verify :: Context -> (Int, InvalidVerifyTest) -> TestTree
 execute_invalid_verify tex (label, InvalidVerifyTest {..}) =
