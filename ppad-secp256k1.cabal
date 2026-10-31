@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               ppad-secp256k1
-version:            0.5.8
+version:            0.5.9
 synopsis:           Schnorr signatures, ECDSA, and ECDH on the elliptic curve
                     secp256k1
 license:            MIT
@@ -31,6 +31,12 @@ library
       -Wall
   if flag(llvm)
     ghc-options: -fllvm -O2
+  -- LLVM's x86 backend rewrites a cmov whose operand is a load as a
+  -- branch (its cmov converter), which would make the borrow-masked
+  -- correction of ppad-fixed's sub_mod# (inlinable here) a branch on
+  -- the borrow; keep the cmov.
+  if flag(llvm) && arch(x86_64)
+    ghc-options: -optlc=-x86-cmov-converter=false
   exposed-modules:
       Crypto.Curve.Secp256k1
   build-depends:
@@ -38,7 +44,7 @@ library
     , bytestring >= 0.9 && < 0.13
     , ppad-hmac-drbg >= 0.3.1 && < 0.4
     , ppad-sha256 >= 0.3.2 && < 0.4
-    , ppad-fixed >= 0.2.0 && < 0.3
+    , ppad-fixed >= 0.2.1 && < 0.3
     , primitive >= 0.8 && < 0.10
 
 test-suite secp256k1-tests

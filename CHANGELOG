@@ -1,5 +1,12 @@
 # Changelog
 
+- 0.5.9 (2026-10-31)
+  * Bumps the ppad-fixed dependency to 0.2.1, which under the llvm
+    flag on x86_64 compiles ppad-fixed with LLVM's x86 cmov converter
+    off (-optlc=-x86-cmov-converter=false). This library is compiled
+    likewise, as ppad-fixed's constant-time arithmetic can be inlined
+    into it.
+
 - 0.5.8 (2026-08-01)
   * Addresses a number of minor issues found by an LLM scan:
 
