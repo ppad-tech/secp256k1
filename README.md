@@ -108,8 +108,8 @@ are likely to be accurate and safe from attacks targeting e.g.
 faulty nonce generation or malicious inputs for signature or public
 key parameters.
 
-All timing-sensitive operations [execute in constant time][measr] on
-x86-64 and aarch64 under GHC's NCG and LLVM backends.
+All timing-sensitive operations execute in constant time on x86-64 and
+aarch64 under GHC's [LLVM][measr] and [NCG][measrncg] backends.
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
@@ -147,3 +147,4 @@ to get a REPL for the main library.
 [fixed]: https://git.ppad.tech/fixed
 [sha256]: https://git.ppad.tech/sha256
 [measr]: https://ppad.tech/measure/ppad-secp256k1
+[measrncg]: https://ppad.tech/measure/ppad-secp256k1-ncg
