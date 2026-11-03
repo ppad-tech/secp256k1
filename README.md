@@ -100,14 +100,6 @@ maximum performance.
 
 ## Security
 
-(See both a [security analysis](https://ppad.tech/security-analysis-secp256k1)
-and follow-up [assembly analysis](https://ppad.tech/static-assembly-analysis)
-of the library at [ppad.tech](https://ppad.tech).)
-
-This library aims at the maximum security achievable in a
-garbage-collected language under an optimizing compiler such as GHC, in
-which strict constant-timeness can be [challenging to achieve][const].
-
 The Schnorr implementation within has been tested against the [official
 BIP0340 vectors][ut340], and ECDSA and ECDH have been tested against the
 relevant [Wycheproof vectors][wyche] (with the former also being tested
@@ -116,101 +108,8 @@ are likely to be accurate and safe from attacks targeting e.g.
 faulty nonce generation or malicious inputs for signature or public
 key parameters.
 
-Timing-sensitive operations, e.g. elliptic curve scalar multiplication,
-have been explicitly written so as to execute in time constant with
-respect to secret data. Moreover, fixed-size (256-bit) wide words with
-constant-time operations provided by [ppad-fixed][fixed] are used
-exclusively internally, avoiding timing variations incurred by use of
-GHC's variable-size Integer type.
-
-Criterion benchmarks attest that any timing variation between cases with
-differing inputs is attributable to noise:
-
-```
-  benchmarking derive_pub/wnaf, sk = 2
-  time                 16.63 μs   (16.58 μs .. 16.67 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 16.54 μs   (16.50 μs .. 16.58 μs)
-  std dev              138.3 ns   (123.6 ns .. 156.4 ns)
-
-  benchmarking derive_pub/wnaf, sk = 2 ^ 255 - 19
-  time                 16.63 μs   (16.61 μs .. 16.66 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 16.63 μs   (16.60 μs .. 16.65 μs)
-  std dev              75.03 ns   (59.63 ns .. 101.5 ns)
-
-  benchmarking schnorr/sign_schnorr' (small)
-  time                 42.12 μs   (42.06 μs .. 42.22 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 42.13 μs   (42.08 μs .. 42.22 μs)
-  std dev              245.3 ns   (120.9 ns .. 390.8 ns)
-
-  benchmarking schnorr/sign_schnorr' (large)
-  time                 42.04 μs   (42.00 μs .. 42.11 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 42.08 μs   (42.05 μs .. 42.13 μs)
-  std dev              139.4 ns   (100.1 ns .. 198.1 ns)
-
-  benchmarking ecdsa/sign_ecdsa' (small)
-  time                 25.76 μs   (25.74 μs .. 25.77 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 25.75 μs   (25.74 μs .. 25.77 μs)
-  std dev              52.46 ns   (42.15 ns .. 68.26 ns)
-
-  benchmarking ecdsa/sign_ecdsa' (large)
-  time                 25.76 μs   (25.73 μs .. 25.80 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 25.76 μs   (25.74 μs .. 25.81 μs)
-  std dev              105.5 ns   (49.05 ns .. 205.4 ns)
-
-  benchmarking ecdh/ecdh (small)
-  time                 87.40 μs   (87.33 μs .. 87.49 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 87.41 μs   (87.34 μs .. 87.48 μs)
-  std dev              218.7 ns   (176.6 ns .. 274.3 ns)
-
-  benchmarking ecdh/ecdh (large)
-  time                 88.01 μs   (87.80 μs .. 88.30 μs)
-                       1.000 R²   (1.000 R² .. 1.000 R²)
-  mean                 87.94 μs   (87.81 μs .. 88.13 μs)
-  std dev              492.2 ns   (361.8 ns .. 701.2 ns)
-```
-
-Note also that care has been taken to ensure that allocation is held
-constant across input sizes for all sensitive operations:
-
-```
-  derive_pub
-
-    Case                     Allocated  GCs
-    wnaf, sk = 2                   312    0
-    wnaf, sk = 2 ^ 255 - 19        312    0
-
-  schnorr
-
-    Case                   Allocated  GCs
-    sign_schnorr' (small)     14,416    0
-    sign_schnorr' (large)     14,416    0
-
-  ecdsa
-
-    Case                   Allocated  GCs
-    sign_ecdsa' (small)      1,560    0
-    sign_ecdsa' (large)      1,560    0
-
-  ecdh
-
-    Case          Allocated  GCs
-    ecdh (small)        616    0
-    ecdh (large)        616    0
-
-```
-
-Though constant-resource execution is enforced rigorously, take
-reasonable security precautions as appropriate. You shouldn't deploy the
-implementations within in any situation where they could easily be used
-as an oracle to construct a [timing attack][timea], and you shouldn't
-give sophisticated malicious actors [access to your computer][flurl].
+All timing-sensitive operations [execute in constant time][measr] on
+x86-64 and aarch64 under GHC's NCG and LLVM backends.
 
 If you discover any vulnerabilities, please disclose them via
 security@ppad.tech.
@@ -247,3 +146,4 @@ to get a REPL for the main library.
 [noble]: https://github.com/paulmillr/noble-secp256k1
 [fixed]: https://git.ppad.tech/fixed
 [sha256]: https://git.ppad.tech/sha256
+[measr]: https://ppad.tech/measure/ppad-secp256k1
