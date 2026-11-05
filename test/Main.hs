@@ -142,7 +142,32 @@ parse_point_tests = testGroup "parse_point tests" [
   , parse_point_test_q
   , parse_point_test_r
   , noncanonical_tests
+  , xonly_tests
   ]
+
+-- BIP340's lift_x gives the point of even y. Its parity is that of y,
+-- not of y's Montgomery form, which differs about half the time, as it
+-- does for xo_hex.
+xonly_tests :: TestTree
+xonly_tests = testGroup "32-byte x-only keys have even y" [
+    testCase (render xo_hex) $
+      assertEqual mempty (Just ("02" <> xo_hex))
+        (fmap (B16.encode . serialize_point)
+          (parse_point (decodeLenient xo_hex)))
+  , testCase "x(G) to x(64G)" $
+      mapM_ even_y [1 .. 64 :: Int]
+  ]
+  where
+    even_y k = case parse_int256 (BS.replicate 31 0 <> BS.singleton (fi k))
+                      >>= derive_pub of
+      Nothing  -> assertFailure "bad key"
+      Just pub ->
+        let x = BS.drop 1 (serialize_point pub)
+        in  assertEqual (show k) (Just (BS.cons 0x02 x))
+              (fmap serialize_point (parse_point x))
+
+xo_hex :: BS.ByteString
+xo_hex = "989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f"
 
 -- The field prime is within 2 ^ 32 of 2 ^ 256, so a coordinate in
 -- [p, 2 ^ 256) reduces to a small one, giving a second encoding of a
