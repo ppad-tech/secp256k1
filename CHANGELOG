@@ -1,5 +1,13 @@
 # Changelog
 
+- 0.5.11 (2026-11-13)
+  * Bumps the ppad-sha256 dependency to 0.3.7, and uses its new
+    'hash_prefixed' to hash the message in place when signing and
+    verifying Schnorr signatures. The message was previously copied
+    three times per BIP340 tagged hash, six times in all when signing,
+    so peak memory use with large messages was several times the
+    message size.
+
 - 0.5.10 (2026-11-07)
   * Bumps the ppad-fixed dependency to 0.2.2, which fixes its parity
     check on Montgomery values. 'parse_point' used that check when
