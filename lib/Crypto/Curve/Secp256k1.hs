@@ -1049,7 +1049,7 @@ _sign_schnorr _mul _SECRET m a = do
       bytes_d = unroll32 (S.retr d)
       bytes_p = unroll32 x_p
       t       = xor bytes_d (hash_aux a)
-      rand    = hash_nonce (t <> bytes_p <> m)
+      rand    = hash_nonce (t <> bytes_p) m
       k'      = S.to (unsafe_roll32 rand)
   -- negligible probability, but k' is secret, so compare without
   -- short-circuiting and decide only on the result
@@ -1058,7 +1058,7 @@ _sign_schnorr _mul _SECRET m a = do
   let Affine (C.retr -> x_r) (C.retr -> y_r) = affine pt
       k         = S.select k' (negate k') (W.odd y_r)
       bytes_r   = unroll32 x_r
-      rand'     = hash_challenge (bytes_r <> bytes_p <> m)
+      rand'     = hash_challenge (bytes_r <> bytes_p) m
       e         = S.to (unsafe_roll32 rand')
       bytes_ked = unroll32 (S.retr (k + e * d))
       sig       = bytes_r <> bytes_ked
@@ -1120,7 +1120,7 @@ _verify_schnorr _mul m p sig
       guard (W.lt_vartime r _CURVE_P && W.lt_vartime s _CURVE_Q)
       let Affine (C.retr -> x_P) _ = affine capP
           e = modQ . unsafe_roll32 $
-            hash_challenge (unroll32 r <> unroll32 x_P <> m)
+            hash_challenge (unroll32 r <> unroll32 x_P) m
       -- mul_wnaf rejects a zero scalar, mul_vartime does not; agree on
       -- the identity so both multiplication functions behave alike
       pt0 <- if   W.eq_vartime s 0
@@ -1143,14 +1143,20 @@ hash_aux x = SHA256.hash $
 {-# INLINE hash_aux #-}
 
 -- hardcoded tag of BIP0340/nonce
-hash_nonce :: BS.ByteString -> BS.ByteString
-hash_nonce x = SHA256.hash $
+--
+-- x is 64 bytes, so the prefix is block-aligned and the message is
+-- hashed in place, rather than copied
+hash_nonce :: BS.ByteString -> BS.ByteString -> BS.ByteString
+hash_nonce x = SHA256.hash_prefixed $
   "\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/\aIw4\167\155\203\&5[\155\140}\ETXO\DC2\FS\244\&4\215>\247-\218\EM\135\NULa\251R\191\235/" <> x
 {-# INLINE hash_nonce #-}
 
 -- hardcoded tag of BIP0340/challenge
-hash_challenge :: BS.ByteString -> BS.ByteString
-hash_challenge x = SHA256.hash $
+--
+-- x is 64 bytes, so the prefix is block-aligned and the message is
+-- hashed in place, rather than copied
+hash_challenge :: BS.ByteString -> BS.ByteString -> BS.ByteString
+hash_challenge x = SHA256.hash_prefixed $
   "{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|{\181-z\159\239X2>\177\191z@}\179\130\210\243\242\216\ESC\177\"OI\254Q\143mH\211|" <> x
 {-# INLINE hash_challenge #-}
 
